@@ -29,66 +29,135 @@ async function checkHealth() {
 </script>
 
 <template>
-  <main class="wrap">
-    <h1>Masky <small>(Vue)</small></h1>
-    <p class="lead">user-api 疎通確認</p>
+  <v-app>
+    <!-- DESIGN.md「Navigation」: ヘッダーは primary 色の帯、白抜き大文字ブランド名 -->
+    <header class="mk-header">
+      <p class="mk-header__brand">MASKY</p>
+    </header>
 
-    <button :disabled="state === 'loading'" @click="checkHealth">
-      {{ state === 'loading' ? '確認中…' : 'GET /api/ を叩く' }}
-    </button>
+    <v-main class="mk-main">
+      <v-container class="mk-container">
+        <v-card class="mk-surface health-card">
+          <v-card-text>
+            <p class="mk-muted health-card__lead">user-api 疎通確認</p>
 
-    <p v-if="state === 'ok'" class="result ok">✅ 接続成功: {{ detail }}</p>
-    <p v-else-if="state === 'error'" class="result error">❌ 失敗: {{ detail }}</p>
-    <p v-else-if="state === 'idle'" class="result idle">ボタンを押して疎通を確認してください。</p>
-  </main>
+            <v-btn
+              class="mk-button"
+              color="primary"
+              variant="flat"
+              block
+              :loading="state === 'loading'"
+              @click="checkHealth"
+            >
+              GET /api/ を叩く
+            </v-btn>
+
+            <p v-if="state === 'ok'" class="health-card__result health-card__result--success">
+              <v-icon icon="mdi-check-circle" size="20" />
+              接続成功: {{ detail }}
+            </p>
+            <p v-else-if="state === 'error'" class="health-card__result health-card__result--error">
+              <v-icon icon="mdi-alert-circle" size="20" />
+              失敗: {{ detail }}
+            </p>
+            <p v-else-if="state === 'idle'" class="mk-muted health-card__result">
+              <v-icon icon="mdi-information-outline" size="20" />
+              ボタンを押して疎通を確認してください。
+            </p>
+          </v-card-text>
+        </v-card>
+      </v-container>
+    </v-main>
+
+    <footer class="mk-footer">
+      <p class="mk-footer__copy">Copylight © INFORMATION DEVELOPMENT CO., LTD. All rights reserved.</p>
+    </footer>
+  </v-app>
 </template>
 
 <style scoped>
-.wrap {
+/* DESIGN.md「Layout」: ヘッダー/メイン/フッターの3段構成、ヘッダー・フッターは primary 色 */
+.mk-header,
+.mk-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mk-primary);
+}
+
+.mk-header {
+  min-height: 88px;
+  padding: 0 2rem;
+  justify-content: flex-start;
+}
+
+.mk-header__brand {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.75rem, 2vw, 2.2rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mk-footer {
+  min-height: 72px;
+  padding: 0 1.5rem;
+}
+
+.mk-footer__copy {
+  margin: 0;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.mk-main {
+  background: var(--mk-background);
+}
+
+.mk-container {
   max-width: 640px;
-  margin: 8vh auto;
-  padding: 0 24px;
-  font-family: system-ui, sans-serif;
+  padding-top: 8vh;
 }
-h1 {
-  margin-bottom: 4px;
+
+.health-card {
+  padding: 1.35rem;
 }
-h1 small {
-  color: #888;
-  font-size: 0.5em;
+
+.health-card__lead {
+  margin: 0 0 1rem;
 }
-.lead {
-  color: #555;
-  margin-top: 0;
+
+.health-card__result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+  padding: 1rem 1.05rem;
+  border-radius: var(--mk-rounded-md);
 }
-button {
-  padding: 10px 20px;
-  font-size: 1rem;
-  border: none;
-  border-radius: 999px;
-  background: #078017;
-  color: #fff;
-  cursor: pointer;
+
+.health-card__result--success {
+  background: rgba(47, 125, 74, 0.08);
+  color: var(--mk-success);
 }
-button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.result {
-  margin-top: 20px;
-  padding: 12px 16px;
-  border-radius: 8px;
-}
-.result.ok {
-  background: #e8f5e9;
-  color: #1b5e20;
-}
-.result.error {
-  background: #fdecea;
-  color: #b71c1c;
+
+.health-card__result--error {
+  background: rgba(196, 71, 71, 0.08);
+  color: var(--mk-error);
   white-space: pre-wrap;
 }
-.result.idle {
-  color: #888;
+
+/* DESIGN.md「Components > Button」: 44px以上、角丸14px、大文字化しない、太字、primaryは浮遊感のあるshadow */
+.mk-button {
+  min-height: 44px;
+  border-radius: var(--mk-rounded-sm);
+  text-transform: none;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 16px 30px rgba(0, 123, 167, 0.22);
 }
 </style>

@@ -1,0 +1,53 @@
+/* ../../DESIGN.md の colors / typography / rounded トークンを CSS 変数化したもの */
+:root {
+  --mk-primary: #007ba7;
+  --mk-secondary: #52606d;
+  --mk-background: #f7f9fc;
+  --mk-surface: rgba(255, 255, 255, 0.94);
+  --mk-surface-strong: #ffffff;
+  --mk-text: #17202a;
+  --mk-muted: #52606d;
+  --mk-border: rgba(215, 222, 232, 0.96);
+  --mk-success: #2f7d4a;
+  --mk-warning: #fff3b8;
+  --mk-warning-deep: #b7791f;
+  --mk-warning-surface: rgba(255, 243, 184, 0.18);
+  --mk-warning-border: rgba(255, 243, 184, 0.92);
+  --mk-error: #c44747;
+  --mk-shadow: 0 22px 46px rgba(23, 32, 42, 0.08);
+
+  --mk-rounded-sm: 14px; /* ボタン */
+  --mk-rounded-md: 18px; /* 内包カード・アラートボックス */
+  --mk-rounded-lg: 24px; /* 大枠カード・ドロップゾーン */
+  --mk-rounded-pill: 999px;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--mk-text);
+  font-family:
+    'BIZ UDPGothic',
+    'Hiragino Sans',
+    'Yu Gothic UI',
+    sans-serif;
+  background: var(--mk-background);
+}
+
+/* DESIGN.md「Elevation & Depth」: elevation ではなく独自 shadow + backdrop-filter で奥行きを表現する */
+.mk-surface {
+  border: 1px solid var(--mk-border);
+  background: var(--mk-surface);
+  box-shadow: var(--mk-shadow);
+  backdrop-filter: blur(14px);
+  border-radius: var(--mk-rounded-lg);
+}
+
+.mk-muted {
+  color: var(--mk-muted);
+}
