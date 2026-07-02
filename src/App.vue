@@ -1,69 +1,177 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { useProcessImage } from '@/composables/useProcessImage'
+import { normalizeMetric } from '@/types/processJob'
 
-type CheckState = 'idle' | 'loading' | 'ok' | 'error'
+const {
+  phase,
+  errorMessage,
+  jobStatus,
+  resultImageObjectUrl,
+  resultDownloadName,
+  submit,
+  downloadResult,
+} = useProcessImage()
 
-const state = ref<CheckState>('idle')
-const detail = ref('')
+const selectedFiles = ref<File[]>([])
 
-// user-api の疎通確認。Vite proxy 経由で /api/ → user-api の GET / を叩く。
-// 正常時は JSON 文字列 "OK" が返る。
-async function checkHealth() {
-  state.value = 'loading'
-  detail.value = ''
-  try {
-    const res = await fetch('/api/')
-    const body = await res.text()
-    if (!res.ok) {
-      state.value = 'error'
-      detail.value = `HTTP ${res.status}: ${body}`
-      return
-    }
-    state.value = 'ok'
-    detail.value = body
-  } catch (err) {
-    state.value = 'error'
-    detail.value = err instanceof Error ? err.message : String(err)
+// v-file-input の modelValue は File[] | File | null のいずれもあり得るため、
+// v-model の型に頼らず明示的に File[] へ正規化する。
+function onFilesUpdate(value: File[] | File | null) {
+  if (!value) {
+    selectedFiles.value = []
+  } else if (Array.isArray(value)) {
+    selectedFiles.value = value
+  } else {
+    selectedFiles.value = [value]
   }
 }
+
+const isBusy = computed(() => phase.value === 'uploading' || phase.value === 'polling')
+const canSubmit = computed(() => selectedFiles.value.length > 0 && !isBusy.value)
+
+async function onSubmit() {
+  const file = selectedFiles.value[0]
+  if (!file) return
+  await submit(file)
+}
+
+const resultFile = computed(() => jobStatus.value?.files[0] ?? null)
+const detectedFaceCount = computed(() => normalizeMetric(resultFile.value?.detectedFaceCount ?? null))
+const detectedTextCount = computed(() => normalizeMetric(resultFile.value?.detectedTextCount ?? null))
+
+const FILE_ERROR_LABELS: Record<string, string> = {
+  image_unreadable: '画像を読み込めませんでした。',
+  face_failed: '目の検知/マスキングに失敗しました。',
+  text_failed: '文字列の検知/マスキングに失敗しました。',
+  both_failed: '目・文字列とも検知/マスキングに失敗しました。',
+}
+const fileErrorLabel = computed(() => {
+  const code = resultFile.value?.error
+  if (!code) return null
+  return FILE_ERROR_LABELS[code] ?? `処理に失敗しました（${code}）`
+})
+
+const statusLabel = computed(() => {
+  switch (phase.value) {
+    case 'idle':
+      return 'ファイルを選択してください'
+    case 'uploading':
+      return 'アップロード中...'
+    case 'polling':
+      return `処理中...（${jobStatus.value?.status ?? 'queued'}）`
+    case 'completed':
+      return '完了しました'
+    case 'failed':
+      return '処理に失敗しました'
+    case 'error':
+      return 'エラーが発生しました'
+    default:
+      return ''
+  }
+})
+
+const statusIcon = computed(() => {
+  switch (phase.value) {
+    case 'completed':
+      return 'mdi-check-circle'
+    case 'failed':
+    case 'error':
+      return 'mdi-alert-circle'
+    case 'uploading':
+      return 'mdi-cloud-upload-outline'
+    case 'polling':
+      return 'mdi-timer-sand'
+    default:
+      return 'mdi-information-outline'
+  }
+})
+
+const statusToneClass = computed(() => {
+  switch (phase.value) {
+    case 'completed':
+      return 'panel__status--success'
+    case 'failed':
+    case 'error':
+      return 'panel__status--error'
+    default:
+      return 'mk-muted'
+  }
+})
 </script>
 
 <template>
   <v-app>
-    <!-- DESIGN.md「Navigation」: ヘッダーは primary 色の帯、白抜き大文字ブランド名 -->
     <header class="mk-header">
       <p class="mk-header__brand">MASKY</p>
     </header>
 
     <v-main class="mk-main">
       <v-container class="mk-container">
-        <v-card class="mk-surface health-card">
+        <v-card class="mk-surface panel">
           <v-card-text>
-            <p class="mk-muted health-card__lead">user-api 疎通確認</p>
+            <p class="mk-muted panel__lead">画像内の目・文字列を検知してマスキングします</p>
+
+            <v-file-input
+              :model-value="selectedFiles"
+              label="画像を選択"
+              accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff"
+              prepend-icon="mdi-image-outline"
+              density="comfortable"
+              show-size
+              :disabled="isBusy"
+              @update:model-value="onFilesUpdate"
+            />
 
             <v-btn
               class="mk-button"
               color="primary"
               variant="flat"
               block
-              :loading="state === 'loading'"
-              @click="checkHealth"
+              :disabled="!canSubmit"
+              :loading="isBusy"
+              @click="onSubmit"
             >
-              GET /api/ を叩く
+              マスキングを実行
             </v-btn>
 
-            <p v-if="state === 'ok'" class="health-card__result health-card__result--success">
-              <v-icon icon="mdi-check-circle" size="20" />
-              接続成功: {{ detail }}
+            <p class="panel__status" :class="statusToneClass">
+              <v-icon :icon="statusIcon" size="20" />
+              {{ statusLabel }}
             </p>
-            <p v-else-if="state === 'error'" class="health-card__result health-card__result--error">
-              <v-icon icon="mdi-alert-circle" size="20" />
-              失敗: {{ detail }}
+
+            <p v-if="phase === 'failed' || phase === 'error'" class="panel__result panel__result--error">
+              {{ errorMessage }}
             </p>
-            <p v-else-if="state === 'idle'" class="mk-muted health-card__result">
-              <v-icon icon="mdi-information-outline" size="20" />
-              ボタンを押して疎通を確認してください。
+
+            <!-- ジョブ自体は completed でも、個別ファイルが face_failed/text_failed 等で
+                 マスキング画像が生成されない場合がある（README「不正なファイルや一部失敗時の挙動」参照） -->
+            <p v-if="phase === 'completed' && fileErrorLabel" class="panel__result panel__result--warning">
+              <v-icon icon="mdi-alert-outline" size="20" />
+              {{ fileErrorLabel }}
             </p>
+
+            <div v-if="phase === 'completed'" class="panel__result-block">
+              <img
+                v-if="resultImageObjectUrl"
+                :src="resultImageObjectUrl"
+                alt="マスキング結果"
+                class="panel__result-image"
+              />
+              <p class="mk-muted panel__counts">
+                目の検知数: {{ detectedFaceCount ?? '—' }} / 文字列の検知数: {{ detectedTextCount ?? '—' }}
+              </p>
+              <v-btn
+                v-if="resultImageObjectUrl"
+                class="mk-button"
+                color="secondary"
+                variant="outlined"
+                @click="downloadResult"
+              >
+                <v-icon icon="mdi-download" start />
+                ダウンロード（{{ resultDownloadName }}）
+              </v-btn>
+            </div>
           </v-card-text>
         </v-card>
       </v-container>
@@ -120,35 +228,66 @@ async function checkHealth() {
 
 .mk-container {
   max-width: 640px;
-  padding-top: 8vh;
+  padding-top: 6vh;
 }
 
-.health-card {
+.panel {
   padding: 1.35rem;
 }
 
-.health-card__lead {
+.panel__lead {
   margin: 0 0 1rem;
 }
 
-.health-card__result {
+.panel__status {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 1.25rem;
-  padding: 1rem 1.05rem;
-  border-radius: var(--mk-rounded-md);
+  margin: 1.25rem 0 0;
 }
 
-.health-card__result--success {
-  background: rgba(47, 125, 74, 0.08);
+.panel__status--success {
   color: var(--mk-success);
 }
 
-.health-card__result--error {
+.panel__status--error {
+  color: var(--mk-error);
+}
+
+.panel__result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 1rem 1.05rem;
+  border-radius: var(--mk-rounded-md);
+  white-space: pre-wrap;
+}
+
+.panel__result--warning {
+  background: var(--mk-warning-surface);
+  color: var(--mk-warning-deep);
+}
+
+.panel__result--error {
   background: rgba(196, 71, 71, 0.08);
   color: var(--mk-error);
-  white-space: pre-wrap;
+}
+
+.panel__result-block {
+  margin-top: 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.panel__result-image {
+  width: 100%;
+  border-radius: var(--mk-rounded-md);
+  border: 1px solid var(--mk-border);
+}
+
+.panel__counts {
+  margin: 0;
 }
 
 /* DESIGN.md「Components > Button」: 44px以上、角丸14px、大文字化しない、太字、primaryは浮遊感のあるshadow */
@@ -158,6 +297,9 @@ async function checkHealth() {
   text-transform: none;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+.mk-button[class*='bg-primary'] {
   box-shadow: 0 16px 30px rgba(0, 123, 167, 0.22);
 }
 </style>

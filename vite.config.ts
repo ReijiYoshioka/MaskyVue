@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vuetify from 'vite-plugin-vuetify'
@@ -8,6 +9,11 @@ const API_TARGET = process.env.VITE_API_TARGET ?? 'http://localhost:6629'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue(), vuetify({ autoImport: true })],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   server: {
     // Flutter の dev server(53333) と衝突しないポート
     port: 53334,
