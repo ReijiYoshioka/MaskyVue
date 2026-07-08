@@ -27,13 +27,21 @@ function onFilesUpdate(value: File[] | File | null) {
   }
 }
 
+// README「不正なファイルや一部失敗時の挙動」: 目・文字列のどちらか一方でも失敗すると
+// マスキング画像自体が生成されない。片方のバックエンドが不調な間は対象を絞れるようにする。
+const detectFace = ref(true)
+const detectText = ref(true)
+const hasTargetSelected = computed(() => detectFace.value || detectText.value)
+
 const isBusy = computed(() => phase.value === 'uploading' || phase.value === 'polling')
-const canSubmit = computed(() => selectedFiles.value.length > 0 && !isBusy.value)
+const canSubmit = computed(
+  () => selectedFiles.value.length > 0 && hasTargetSelected.value && !isBusy.value,
+)
 
 async function onSubmit() {
   const file = selectedFiles.value[0]
-  if (!file) return
-  await submit(file)
+  if (!file || !hasTargetSelected.value) return
+  await submit(file, { face: detectFace.value, text: detectText.value })
 }
 
 const resultFile = computed(() => jobStatus.value?.files[0] ?? null)
@@ -122,6 +130,26 @@ const statusToneClass = computed(() => {
               :disabled="isBusy"
               @update:model-value="onFilesUpdate"
             />
+
+            <div class="panel__targets">
+              <v-checkbox
+                v-model="detectFace"
+                label="目"
+                density="compact"
+                hide-details
+                :disabled="isBusy"
+              />
+              <v-checkbox
+                v-model="detectText"
+                label="文字列"
+                density="compact"
+                hide-details
+                :disabled="isBusy"
+              />
+            </div>
+            <p v-if="!hasTargetSelected" class="panel__target-warning mk-muted">
+              少なくとも1つの対象を選択してください。
+            </p>
 
             <v-btn
               class="mk-button"
@@ -237,6 +265,17 @@ const statusToneClass = computed(() => {
 
 .panel__lead {
   margin: 0 0 1rem;
+}
+
+.panel__targets {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.panel__target-warning {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
 }
 
 .panel__status {
