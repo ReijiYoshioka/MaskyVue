@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref } from 'vue'
-import { fetchGeneratedFileBlob, fetchJobStatus, submitProcessingJob, type ProcessImageTargets } from '@/api/userApi'
+import { fetchGeneratedFileBlob, fetchJobStatus, submitProcessingJob, type ProcessImageOptions } from '@/api/userApi'
 import {
   TERMINAL_STATUSES,
   type JobStatusResponse,
@@ -99,11 +99,11 @@ export function useProcessImage() {
     }
   }
 
-  async function submit(file: File, targets: ProcessImageTargets) {
+  async function submit(file: File, options: ProcessImageOptions) {
     reset()
     phase.value = 'uploading'
     try {
-      const submitted = await submitProcessingJob(file, targets)
+      const submitted = await submitProcessingJob(file, options)
       job.value = submitted
       phase.value = 'polling'
       await pollOnce(submitted)

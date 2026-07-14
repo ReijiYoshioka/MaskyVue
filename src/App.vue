@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { DEFAULT_TEXT_REGEX } from '@/api/userApi'
 import { useProcessImage } from '@/composables/useProcessImage'
 import { normalizeMetric } from '@/types/processJob'
 
@@ -33,15 +34,36 @@ const detectFace = ref(true)
 const detectText = ref(true)
 const hasTargetSelected = computed(() => detectFace.value || detectText.value)
 
+// 文字列検知の正規表現。サーバー既定値を初期表示し、ユーザーが上書きできる。
+const textRegex = ref(DEFAULT_TEXT_REGEX)
+const regexValid = computed(() => {
+  if (!detectText.value) return true
+  if (!textRegex.value.trim()) return false
+  try {
+    new RegExp(textRegex.value)
+    return true
+  } catch {
+    return false
+  }
+})
+
+// KIE(Key Information Extraction)の対象情報リスト。「患者名」のような意味指定で
+// 該当する値をマスキングする(glm-experimental)。バックエンドには kie= の繰り返しクエリで届く。
+const kieKeys = ref<string[]>([])
+
 const isBusy = computed(() => phase.value === 'uploading' || phase.value === 'polling')
 const canSubmit = computed(
-  () => selectedFiles.value.length > 0 && hasTargetSelected.value && !isBusy.value,
+  () => selectedFiles.value.length > 0 && hasTargetSelected.value && regexValid.value && !isBusy.value,
 )
 
 async function onSubmit() {
   const file = selectedFiles.value[0]
-  if (!file || !hasTargetSelected.value) return
-  await submit(file, { face: detectFace.value, text: detectText.value })
+  if (!file || !hasTargetSelected.value || !regexValid.value) return
+  await submit(file, {
+    targets: { face: detectFace.value, text: detectText.value },
+    regex: textRegex.value,
+    kieKeys: kieKeys.value,
+  })
 }
 
 const resultFile = computed(() => jobStatus.value?.files[0] ?? null)
@@ -150,6 +172,19 @@ const statusToneClass = computed(() => {
             <p v-if="!hasTargetSelected" class="panel__target-warning mk-muted">
               少なくとも1つの対象を選択してください。
             </p>
+
+            <template v-if="detectText">
+              <v-text-field
+                v-model="textRegex"
+                label="文字列検知の正規表現"
+                density="comfortable"
+                :disabled="isBusy"
+                :error="!regexValid"
+                :error-messages="regexValid ? [] : ['有効な正規表現を入力してください']"
+                hint="例: \d{2,10} は数字2〜10桁、.* は全ての文字列"
+                persistent-hint
+              />
+            </template>
 
             <v-btn
               class="mk-button"

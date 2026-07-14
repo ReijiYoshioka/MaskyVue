@@ -11,13 +11,28 @@ export interface ProcessImageTargets {
   text: boolean
 }
 
+/** サーバー(shared/utils/constants.py DEFAULT_REGEX)と同じ既定値 */
+export const DEFAULT_TEXT_REGEX = '\\d{2,10}'
+
+export interface ProcessImageOptions {
+  targets: ProcessImageTargets
+  /** 文字列検知に使う正規表現。text 有効時のみ送信される */
+  regex: string
+  /**
+   * KIE(Key Information Extraction)の対象情報リスト。例: ['患者名', '患者の住所']
+   * glm-experimental ブランチの ocrmask が受け取る想定(kie= の繰り返しクエリ)。
+   * user-api 側が未対応の間は無視されるだけで害はない。
+   */
+  kieKeys: string[]
+}
+
 /**
  * 画像1枚をアップロードし、検知+マスキングジョブを登録する。
- * 対象を1つも選ばなかった場合はサーバー既定値（両方有効）に委ねる。
  * README「不正なファイルや一部失敗時の挙動」: 目・文字列のどちらか一方でも失敗すると
  * マスキング画像自体が生成されないため、片方のバックエンドが不調な間は対象を絞る必要がある。
  */
-export async function submitProcessingJob(file: File, targets: ProcessImageTargets): Promise<JobSubmissionResponse> {
+export async function submitProcessingJob(file: File, options: ProcessImageOptions): Promise<JobSubmissionResponse> {
+  const { targets, regex, kieKeys } = options
   const formData = new FormData()
   formData.append('files', file)
 
@@ -27,6 +42,14 @@ export async function submitProcessingJob(file: File, targets: ProcessImageTarge
     text_check: String(targets.text),
     text_mask: String(targets.text),
   })
+  if (targets.text && regex.trim()) {
+    query.set('regex', regex.trim())
+  }
+  for (const key of kieKeys) {
+    if (targets.text && key.trim()) {
+      query.append('kie', key.trim())
+    }
+  }
 
   const json = await requestJson(`/file-processing-jobs?${query.toString()}`, {
     method: 'POST',
