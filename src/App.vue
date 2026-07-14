@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { DEFAULT_TEXT_REGEX } from '@/api/userApi'
+import JobListPanel from '@/components/JobListPanel.vue'
 import { useProcessImage } from '@/composables/useProcessImage'
 import { normalizeMetric } from '@/types/processJob'
 
@@ -56,6 +57,8 @@ const canSubmit = computed(
   () => selectedFiles.value.length > 0 && hasTargetSelected.value && regexValid.value && !isBusy.value,
 )
 
+const jobListPanel = ref<InstanceType<typeof JobListPanel> | null>(null)
+
 async function onSubmit() {
   const file = selectedFiles.value[0]
   if (!file || !hasTargetSelected.value || !regexValid.value) return
@@ -65,6 +68,13 @@ async function onSubmit() {
     kieKeys: kieKeys.value,
   })
 }
+
+// ジョブ登録・完了のタイミングで一覧も追従させる
+watch(phase, (value) => {
+  if (value === 'polling' || value === 'completed' || value === 'failed') {
+    void jobListPanel.value?.refresh()
+  }
+})
 
 const resultFile = computed(() => jobStatus.value?.files[0] ?? null)
 const detectedFaceCount = computed(() => normalizeMetric(resultFile.value?.detectedFaceCount ?? null))
@@ -237,6 +247,8 @@ const statusToneClass = computed(() => {
             </div>
           </v-card-text>
         </v-card>
+
+        <JobListPanel ref="jobListPanel" class="job-list-section" />
       </v-container>
     </v-main>
 
@@ -311,6 +323,10 @@ const statusToneClass = computed(() => {
 .panel__target-warning {
   margin: 0 0 1rem;
   font-size: 0.85rem;
+}
+
+.job-list-section {
+  margin-top: 1.5rem;
 }
 
 .panel__status {

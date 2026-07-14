@@ -1,7 +1,9 @@
 import { requestBlob, requestJson, resolveApiUrl } from './http'
 import {
+  parseJobListResponse,
   parseJobStatusResponse,
   parseJobSubmissionResponse,
+  type JobListResponse,
   type JobStatusResponse,
   type JobSubmissionResponse,
 } from '@/types/processJob'
@@ -73,4 +75,12 @@ export async function fetchGeneratedFileBlob(rawUrl: string, token: string): Pro
 
 export function generatedFileDownloadUrl(rawUrl: string): string {
   return resolveApiUrl(rawUrl)
+}
+
+/** サーバー上の期限切れでない全ジョブの一覧(他ユーザーのジョブも含む)。トークン不要。 */
+export async function fetchJobList(): Promise<JobListResponse> {
+  const json = await requestJson('/file-processing-jobs', {
+    action: 'ジョブ一覧を取得',
+  })
+  return parseJobListResponse(json)
 }

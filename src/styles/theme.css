@@ -51,3 +51,10 @@ body {
 .mk-muted {
   color: var(--mk-muted);
 }
+
+.mk-section-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}

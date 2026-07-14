@@ -74,6 +74,22 @@ export interface JobStatusResponse {
   message: string | null
 }
 
+/** GET /file-processing-jobs (一覧) の1件分 */
+export interface JobListEntry {
+  jobId: string
+  startDate: string
+  expiryDate: string
+  status: ProcessJobStatus
+  uploadedFiles: FileCounts
+  extractedImages: FileCounts
+  detectionStats: { detectedFaceCount: number; detectedTextCount: number } | null
+}
+
+export interface JobListResponse {
+  authRequirements: AuthRequirements | null
+  jobs: JobListEntry[]
+}
+
 type Json = Record<string, unknown>
 
 function asJson(value: unknown, context: string): Json {
@@ -202,6 +218,43 @@ export function parseJobStatusResponse(value: unknown): JobStatusResponse {
     files,
     error,
     message: asString(json.message),
+  }
+}
+
+export function parseJobListResponse(value: unknown): JobListResponse {
+  const json = asJson(value, 'job list response')
+  const jobsJson = json.jobs
+  const jobs = Array.isArray(jobsJson)
+    ? jobsJson.map((item) => {
+        const j = asJson(item, 'jobs[]')
+        const jobId = asString(j.job_id)
+        const status = asString(j.status)
+        if (jobId === null || status === null) {
+          throw new Error('jobs[] に job_id または status がありません。')
+        }
+        const statsJson = j.detection_stats
+        const stats =
+          typeof statsJson === 'object' && statsJson !== null
+            ? {
+                detectedFaceCount: asNumber((statsJson as Json).detected_face_count) ?? 0,
+                detectedTextCount: asNumber((statsJson as Json).detected_text_count) ?? 0,
+              }
+            : null
+        return {
+          jobId,
+          startDate: asString(j.start_date) ?? '',
+          expiryDate: asString(j.expiry_date) ?? '',
+          status: status as ProcessJobStatus,
+          uploadedFiles: parseFileCounts(j.uploaded_files, 'uploaded_files'),
+          extractedImages: parseFileCounts(j.extracted_images, 'extracted_images'),
+          detectionStats: stats,
+        }
+      })
+    : []
+
+  return {
+    authRequirements: parseAuthRequirements(json.metadata),
+    jobs,
   }
 }
 
