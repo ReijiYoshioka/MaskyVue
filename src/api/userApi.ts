@@ -29,14 +29,20 @@ export interface ProcessImageOptions {
 }
 
 /**
- * 画像1枚をアップロードし、検知+マスキングジョブを登録する。
+ * ファイル群(1つ以上)をアップロードし、検知+マスキングジョブを登録する。1回のアップロード=1タスク。
+ * 画像単体だけでなく zip・Office・PDF も送信可能(バックエンドが再帰的に展開して個別処理する)。
  * README「不正なファイルや一部失敗時の挙動」: 目・文字列のどちらか一方でも失敗すると
  * マスキング画像自体が生成されないため、片方のバックエンドが不調な間は対象を絞る必要がある。
  */
-export async function submitProcessingJob(file: File, options: ProcessImageOptions): Promise<JobSubmissionResponse> {
+export async function submitProcessingJob(
+  files: File[],
+  options: ProcessImageOptions,
+): Promise<JobSubmissionResponse> {
   const { targets, regex, kieKeys } = options
   const formData = new FormData()
-  formData.append('files', file)
+  for (const file of files) {
+    formData.append('files', file)
+  }
 
   const query = new URLSearchParams({
     face_check: String(targets.face),
@@ -83,4 +89,35 @@ export async function fetchJobList(): Promise<JobListResponse> {
     action: 'ジョブ一覧を取得',
   })
   return parseJobListResponse(json)
+}
+
+export type JobAction = 'pause' | 'resume' | 'cancel' | 'prioritize'
+
+export interface JobActionResult {
+  status: string
+  message: string
+}
+
+const JOB_ACTION_LABELS: Record<JobAction, string> = {
+  pause: 'ジョブを一時停止',
+  resume: 'ジョブを再開',
+  cancel: 'ジョブをキャンセル',
+  prioritize: 'ジョブを優先実行',
+}
+
+/**
+ * ジョブ制御。token は自分のジョブなら保持しているものを送る。
+ * job_control_auth_required=false のデプロイではトークン無しでも受理される。
+ */
+export async function requestJobAction(jobId: string, action: JobAction, token: string | null): Promise<JobActionResult> {
+  const json = await requestJson(`/file-processing-jobs/${encodeURIComponent(jobId)}/${action}`, {
+    method: 'POST',
+    headers: token ? { Authorization: token } : {},
+    action: JOB_ACTION_LABELS[action],
+  })
+  const result = json as { status?: unknown; message?: unknown }
+  return {
+    status: typeof result.status === 'string' ? result.status : '',
+    message: typeof result.message === 'string' ? result.message : '',
+  }
 }

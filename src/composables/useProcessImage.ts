@@ -1,5 +1,6 @@
 import { onBeforeUnmount, ref } from 'vue'
-import { fetchGeneratedFileBlob, fetchJobStatus, submitProcessingJob, type ProcessImageOptions } from '@/api/userApi'
+import { fetchJobStatus, submitProcessingJob, type ProcessImageOptions } from '@/api/userApi'
+import { rememberJobToken } from '@/state/jobTokenStore'
 import {
   TERMINAL_STATUSES,
   type JobStatusResponse,
@@ -11,16 +12,18 @@ const POLL_INTERVAL_MS = 1500
 
 export type FlowPhase = 'idle' | 'uploading' | 'polling' | 'completed' | 'failed' | 'error'
 
+/** タスクは1回のアップロード(複数ファイル可)につき1件。結果の詳細確認は
+ *  ResultExplorer(タスク→アップロードファイル→画像のドリルダウン)が担う。 */
 export function useProcessImage() {
   const phase = ref<FlowPhase>('idle')
   const errorMessage = ref('')
   const job = ref<JobSubmissionResponse | null>(null)
   const jobStatus = ref<JobStatusResponse | null>(null)
-  const resultImageObjectUrl = ref<string | null>(null)
-  const resultDownloadName = ref<string | null>(null)
+  // アップロード時にクライアントが保持していた元ファイル群。zip/PDF/Office 展開後の
+  // 個別画像には対応する元画像が取れないため、単一画像アップロード時の before 表示にのみ使う。
+  const uploadedFiles = ref<File[]>([])
 
   let pollTimer: ReturnType<typeof setTimeout> | null = null
-  let resultBlob: Blob | null = null
 
   function clearPollTimer() {
     if (pollTimer !== null) {
@@ -29,49 +32,13 @@ export function useProcessImage() {
     }
   }
 
-  function revokeResultImage() {
-    if (resultImageObjectUrl.value) {
-      URL.revokeObjectURL(resultImageObjectUrl.value)
-      resultImageObjectUrl.value = null
-    }
-    resultBlob = null
-    resultDownloadName.value = null
-  }
-
   function reset() {
     clearPollTimer()
-    revokeResultImage()
     phase.value = 'idle'
     errorMessage.value = ''
     job.value = null
     jobStatus.value = null
-  }
-
-  async function loadResultImage(status: JobStatusResponse, token: string) {
-    // 単一ファイル送信なので files[0] が対象。url が null の場合は
-    // face_failed/text_failed 等でマスキング画像が生成されなかったケース（呼び出し元でハンドリング）。
-    const target = status.files[0]
-    if (!target?.url) return
-    try {
-      const blob = await fetchGeneratedFileBlob(target.url, token)
-      revokeResultImage()
-      resultBlob = blob
-      resultDownloadName.value = target.downloadName ?? target.displayName
-      resultImageObjectUrl.value = URL.createObjectURL(blob)
-    } catch (err) {
-      // 画像取得に失敗してもジョブ自体は成功として扱い、エラーは黙って諦める。
-      console.error('結果画像の取得に失敗しました', err)
-    }
-  }
-
-  function downloadResult() {
-    if (!resultBlob || !resultDownloadName.value) return
-    const url = URL.createObjectURL(resultBlob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = resultDownloadName.value
-    link.click()
-    URL.revokeObjectURL(url)
+    uploadedFiles.value = []
   }
 
   async function pollOnce(currentJob: JobSubmissionResponse) {
@@ -81,11 +48,8 @@ export function useProcessImage() {
 
       if (isTerminal(status.status)) {
         clearPollTimer()
-        if (status.status === 'completed') {
-          phase.value = 'completed'
-          await loadResultImage(status, currentJob.token)
-        } else {
-          phase.value = 'failed'
+        phase.value = status.status === 'completed' ? 'completed' : 'failed'
+        if (status.status !== 'completed') {
           errorMessage.value = status.error?.message ?? `ジョブが ${status.status} で終了しました。`
         }
         return
@@ -99,11 +63,13 @@ export function useProcessImage() {
     }
   }
 
-  async function submit(file: File, options: ProcessImageOptions) {
+  async function submit(files: File[], options: ProcessImageOptions) {
     reset()
+    uploadedFiles.value = files
     phase.value = 'uploading'
     try {
-      const submitted = await submitProcessingJob(file, options)
+      const submitted = await submitProcessingJob(files, options)
+      rememberJobToken(submitted.jobId, submitted.token)
       job.value = submitted
       phase.value = 'polling'
       await pollOnce(submitted)
@@ -115,7 +81,6 @@ export function useProcessImage() {
 
   onBeforeUnmount(() => {
     clearPollTimer()
-    revokeResultImage()
   })
 
   return {
@@ -123,11 +88,9 @@ export function useProcessImage() {
     errorMessage,
     job,
     jobStatus,
-    resultImageObjectUrl,
-    resultDownloadName,
+    uploadedFiles,
     submit,
     reset,
-    downloadResult,
   }
 }
 

@@ -72,9 +72,13 @@ export interface JobStatusResponse {
   files: ProcessedImageFileResult[]
   error: { errorId: string; message: string } | null
   message: string | null
+  expiresAt: string | null
 }
 
-/** GET /file-processing-jobs (一覧) の1件分 */
+/** GET /file-processing-jobs (一覧) の1件分。
+ *  「自分/他人」の判定はサーバーが返す access ではなく、
+ *  クライアントが保持する jobTokenStore のトークン有無で行う(README:
+ *  ユーザー単位の認証システムは存在せず、トークンの所持が唯一の判定材料)。 */
 export interface JobListEntry {
   jobId: string
   startDate: string
@@ -218,6 +222,7 @@ export function parseJobStatusResponse(value: unknown): JobStatusResponse {
     files,
     error,
     message: asString(json.message),
+    expiresAt: asString(json.expires_at),
   }
 }
 
@@ -262,4 +267,46 @@ export function parseJobListResponse(value: unknown): JobListResponse {
 export function normalizeMetric(value: number | null): number | null {
   if (value === null || value < 0) return null
   return value
+}
+
+/** displayName の先頭セグメント(元のアップロードファイル名)ごとにグルーピングした1件。
+ *  UI/UX要件「タスク→アップロードファイル→画像」の段階的ドリルダウンの中間層に対応する。 */
+export interface UploadFileGroup {
+  /** 元のアップロードファイル名(例: "bundle.zip", "report.pdf", "image.png") */
+  uploadFileName: string
+  /** そのファイルに含まれる画像群。displayName はファイル内の相対パスも保持したまま。 */
+  images: ProcessedImageFileResult[]
+  detectedCount: number
+  errorCount: number
+}
+
+/** files[] の displayName ("bundle.zip/nested.zip/image_1.png") の先頭セグメントで
+ *  アップロードファイル単位にグルーピングする。単一画像アップロードなら1グループのみ。 */
+export function groupFilesByUploadFile(files: ProcessedImageFileResult[]): UploadFileGroup[] {
+  const groups = new Map<string, ProcessedImageFileResult[]>()
+  for (const file of files) {
+    const uploadFileName = file.displayName.split('/')[0]
+    const bucket = groups.get(uploadFileName)
+    if (bucket) {
+      bucket.push(file)
+    } else {
+      groups.set(uploadFileName, [file])
+    }
+  }
+
+  return Array.from(groups.entries()).map(([uploadFileName, images]) => ({
+    uploadFileName,
+    images,
+    detectedCount: images.filter(
+      (img) => (img.detectedFaceCount ?? 0) > 0 || (img.detectedTextCount ?? 0) > 0,
+    ).length,
+    errorCount: images.filter((img) => img.error !== null).length,
+  }))
+}
+
+/** displayName からファイル内の相対パス(先頭セグメントを除いた部分)を取り出す。
+ *  例: "bundle.zip/sub.zip/image_1.png" → "sub.zip/image_1.png" */
+export function relativePathWithinUploadFile(displayName: string): string {
+  const segments = displayName.split('/')
+  return segments.length > 1 ? segments.slice(1).join('/') : segments[0]
 }

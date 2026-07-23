@@ -16,6 +16,17 @@
   --mk-error: #c44747;
   --mk-shadow: 0 22px 46px rgba(23, 32, 42, 0.08);
 
+  /* ヘッダーのライセンス状態インジケーター用（Masky 本家 shell__status 系） */
+  --mk-status-active-text: #d8ffe4;
+  --mk-status-active-border: rgba(129, 234, 162, 0.96);
+  --mk-status-active-bg: rgba(25, 122, 58, 0.24);
+  --mk-status-checking-text: #f6f2dd;
+
+  /* 期限が近いジョブの警告表示。淡黄(--mk-warning)は白背景上で視認性が低いため、
+     チップの背景として使う濃色を別途用意する(DESIGN.md「warning色を単独の判断材料にしない」に対応)。 */
+  --mk-expiry-soon-bg: #b7791f;
+  --mk-expiry-soon-text: #ffffff;
+
   --mk-rounded-sm: 14px; /* ボタン */
   --mk-rounded-md: 18px; /* 内包カード・アラートボックス */
   --mk-rounded-lg: 24px; /* 大枠カード・ドロップゾーン */
