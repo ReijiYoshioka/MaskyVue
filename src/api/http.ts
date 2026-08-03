@@ -6,6 +6,22 @@ const DEFAULT_TIMEOUT_MS = 20_000
 export class ApiRequestError extends Error {}
 
 /**
+ * サーバーは常に {"detail": {"error_id": ..., "message": "日本語の説明"}} 形式でエラーを返す
+ * (shared/utils/api_endpoints.py api_error_detail)。生の JSON をそのまま利用者に見せず、
+ * 人が読める message だけを抜き出す。パースできない場合のみ HTTP ステータスにフォールバックする。
+ */
+function extractErrorMessage(action: string, status: number, bodyText: string): string {
+  try {
+    const parsed = JSON.parse(bodyText) as { detail?: { message?: unknown } }
+    const message = parsed.detail?.message
+    if (typeof message === 'string' && message.trim()) return message
+  } catch {
+    // 本文が JSON でない場合は下のフォールバックを使う
+  }
+  return `${action}に失敗しました（サーバーエラー: ${status}）。時間を置いて再度お試しください。`
+}
+
+/**
  * サーバーが返す URL（例: "/generated-files/xyz"）は user-api のルート基準の相対パス。
  * Vite/nginx の /api プロキシ経由で叩くため、/api を前置する。
  */
@@ -14,11 +30,17 @@ export function resolveApiUrl(rawUrl: string): string {
   return rawUrl.startsWith('/') ? `${API_PREFIX}${rawUrl}` : `${API_PREFIX}/${rawUrl}`
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, action: string): Promise<T> {
+/**
+ * fetch 自体をここで呼び出し、AbortController の signal を確実に fetch に渡す。
+ * (以前は既に呼び出し済みの Promise を受け取って abort() していたため、
+ *  abort が実際の HTTP リクエストと無関係な signal を発火するだけで、
+ *  リクエストが中断されずタイムアウトが機能していなかった。)
+ */
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number, action: string): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
   try {
-    return await promise
+    return await fetch(url, { ...init, signal: controller.signal })
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new ApiRequestError(`${action} 中にタイムアウトしました。`)
@@ -40,14 +62,15 @@ export interface RequestOptions {
 /** JSON ボディを期待するリクエスト。HTTPエラー時は本文を含めて例外化する。 */
 export async function requestJson(rawUrl: string, options: RequestOptions): Promise<unknown> {
   const url = resolveApiUrl(rawUrl)
-  const res = await withTimeout(
-    fetch(url, { method: options.method ?? 'GET', headers: options.headers, body: options.body }),
+  const res = await fetchWithTimeout(
+    url,
+    { method: options.method ?? 'GET', headers: options.headers, body: options.body },
     options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     options.action,
   )
   const bodyText = await res.text()
   if (!res.ok) {
-    throw new ApiRequestError(`${options.action} に失敗しました (HTTP ${res.status}): ${bodyText.slice(0, 300)}`)
+    throw new ApiRequestError(extractErrorMessage(options.action, res.status, bodyText))
   }
   return bodyText.length > 0 ? JSON.parse(bodyText) : null
 }
@@ -56,10 +79,10 @@ export async function requestJson(rawUrl: string, options: RequestOptions): Prom
 export async function requestBlob(rawUrl: string, token: string | null, action: string): Promise<Blob> {
   const url = resolveApiUrl(rawUrl)
   const headers: Record<string, string> = token ? { Authorization: token } : {}
-  const res = await withTimeout(fetch(url, { headers }), DEFAULT_TIMEOUT_MS, action)
+  const res = await fetchWithTimeout(url, { headers }, DEFAULT_TIMEOUT_MS, action)
   if (!res.ok) {
     const bodyText = await res.text().catch(() => '')
-    throw new ApiRequestError(`${action} に失敗しました (HTTP ${res.status}): ${bodyText.slice(0, 300)}`)
+    throw new ApiRequestError(extractErrorMessage(action, res.status, bodyText))
   }
   return res.blob()
 }

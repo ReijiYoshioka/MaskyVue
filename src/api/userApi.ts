@@ -16,16 +16,15 @@ export interface ProcessImageTargets {
 /** サーバー(shared/utils/constants.py DEFAULT_REGEX)と同じ既定値 */
 export const DEFAULT_TEXT_REGEX = '\\d{2,10}'
 
+/** UIではまだ正規表現に名前を付けられないため、送信時は固定名を使う(README「regexはregex_name:regex_valueのJSONオブジェクト」)。 */
+const DEFAULT_REGEX_NAME = '文字検知パターン'
+
 export interface ProcessImageOptions {
   targets: ProcessImageTargets
+  /** false の場合は検知(check)のみ行い、マスク画像は生成しない(UI/UX要件2.3「チェックのみ」)。 */
+  shouldMask: boolean
   /** 文字列検知に使う正規表現。text 有効時のみ送信される */
   regex: string
-  /**
-   * KIE(Key Information Extraction)の対象情報リスト。例: ['患者名', '患者の住所']
-   * glm-experimental ブランチの ocrmask が受け取る想定(kie= の繰り返しクエリ)。
-   * user-api 側が未対応の間は無視されるだけで害はない。
-   */
-  kieKeys: string[]
 }
 
 /**
@@ -33,31 +32,29 @@ export interface ProcessImageOptions {
  * 画像単体だけでなく zip・Office・PDF も送信可能(バックエンドが再帰的に展開して個別処理する)。
  * README「不正なファイルや一部失敗時の挙動」: 目・文字列のどちらか一方でも失敗すると
  * マスキング画像自体が生成されないため、片方のバックエンドが不調な間は対象を絞る必要がある。
+ *
+ * regex は multipart フォームフィールドとして { 名前: 正規表現 } の JSON オブジェクトを渡す
+ * 仕様に変わった(FaceMask commit 91c298e)。クエリの単純文字列では 422 invalid_parameter_combination になる。
  */
 export async function submitProcessingJob(
   files: File[],
   options: ProcessImageOptions,
 ): Promise<JobSubmissionResponse> {
-  const { targets, regex, kieKeys } = options
+  const { targets, shouldMask, regex } = options
   const formData = new FormData()
   for (const file of files) {
     formData.append('files', file)
   }
+  if (targets.text && regex.trim()) {
+    formData.append('regex', JSON.stringify({ [DEFAULT_REGEX_NAME]: regex.trim() }))
+  }
 
   const query = new URLSearchParams({
     face_check: String(targets.face),
-    face_mask: String(targets.face),
+    face_mask: String(targets.face && shouldMask),
     text_check: String(targets.text),
-    text_mask: String(targets.text),
+    text_mask: String(targets.text && shouldMask),
   })
-  if (targets.text && regex.trim()) {
-    query.set('regex', regex.trim())
-  }
-  for (const key of kieKeys) {
-    if (targets.text && key.trim()) {
-      query.append('kie', key.trim())
-    }
-  }
 
   const json = await requestJson(`/file-processing-jobs?${query.toString()}`, {
     method: 'POST',
@@ -71,6 +68,15 @@ export async function fetchJobStatus(hybridPollingUrl: string, token: string): P
   const json = await requestJson(hybridPollingUrl, {
     headers: { Authorization: token },
     action: 'ジョブ状態を取得',
+  })
+  return parseJobStatusResponse(json)
+}
+
+/** ジョブ一覧のカードから直接タスク詳細を開く用途。token は自分のジョブなら送る(無くても閲覧自体は可能)。 */
+export async function fetchJobStatusById(jobId: string, token: string | null): Promise<JobStatusResponse> {
+  const json = await requestJson(`/file-processing-jobs/${encodeURIComponent(jobId)}?detail=hybrid`, {
+    headers: token ? { Authorization: token } : {},
+    action: 'タスク詳細を取得',
   })
   return parseJobStatusResponse(json)
 }

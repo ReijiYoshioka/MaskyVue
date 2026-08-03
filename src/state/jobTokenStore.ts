@@ -44,7 +44,39 @@ export function forgetJobToken(jobId: string) {
   }
 }
 
+/**
+ * 一覧 (GET /file-processing-jobs) に存在しない jobId のトークンを掃除する。
+ * サーバーの一覧は期限切れジョブを返さない仕様のため、forgetJobToken を個別に
+ * 呼ぶ機会がなく、期限切れ後もトークンが localStorage に無期限に残ってしまう。
+ * このため、一覧取得後に「現在有効な jobId 一覧」を渡してもらい、それ以外の
+ * エントリを一括削除する。
+ *
+ * 呼び出し箇所: JobListPanel.vue の refresh 関数内、ジョブ一覧取得後。
+ */
+export function pruneJobTokens(activeJobIds: string[]) {
+  const active = new Set(activeJobIds)
+  const map = load()
+  let changed = false
+  for (const jobId of Object.keys(map)) {
+    if (!active.has(jobId)) {
+      delete map[jobId]
+      changed = true
+    }
+  }
+  if (changed) {
+    save(map)
+  }
+}
+
 /** 保持している自分のジョブID一覧 */
 export function knownJobIds(): string[] {
   return Object.keys(load())
+}
+
+/** 自分のジョブのトークンを含む共有URLを組み立てる。URLを受け取った相手は結果の閲覧・DLができる。 */
+export function buildShareUrl(jobId: string, token: string): string {
+  const url = new URL(location.href)
+  url.hash = ''
+  url.search = new URLSearchParams({ job: jobId, token }).toString()
+  return url.toString()
 }

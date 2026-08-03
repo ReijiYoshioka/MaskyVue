@@ -4,7 +4,7 @@ import type { LicenseStatusResponse, LicenseStatusIndicator } from '@/types/lice
 export interface LicenseExpiryInfo {
   expiryDate: string | null
   daysRemaining: number | null
-  tone: 'active' | 'soon' | 'expired'
+  tone: 'active' | 'soon' | 'expired' | 'unlimited'
 }
 
 export function useLicenseStatusAdapter() {
@@ -21,14 +21,30 @@ export function useLicenseStatusAdapter() {
     daysRemaining: null,
     tone: 'expired',
   })
+  const lastCheckedAt = ref<string | null>(null)
 
-  function calculateExpiry(eyeEndDate?: string, ocrEndDate?: string): LicenseExpiryInfo {
-    if (!eyeEndDate || !ocrEndDate) {
+  function calculateExpiry(
+    eyeEndDate?: string | null,
+    ocrEndDate?: string | null,
+  ): LicenseExpiryInfo {
+    // バックエンド仕様: end_date が null は「無期限で有効」を意味する。
+    // 両方が無期限の場合は、期限切れではなく無期限ライセンスとして扱う。
+    if (eyeEndDate === null && ocrEndDate === null) {
+      return { expiryDate: null, daysRemaining: null, tone: 'unlimited' }
+    }
+
+    // 片方だけ無期限（null）で、もう片方に実際の期限日がある場合は、
+    // 制限のある方の期限日を採用する。
+    const candidateDates = [eyeEndDate, ocrEndDate].filter(
+      (date): date is string => typeof date === 'string' && date.length > 0,
+    )
+
+    if (candidateDates.length === 0) {
       return { expiryDate: null, daysRemaining: null, tone: 'expired' }
     }
 
     // より早い期限日を採用（両方が有効な期間は、より制限的な方）
-    const minEndDate = [eyeEndDate, ocrEndDate].sort()[0]
+    const minEndDate = candidateDates.sort()[0]
     const expiryDate = new Date(minEndDate)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -78,8 +94,10 @@ export function useLicenseStatusAdapter() {
       }
     } catch {
       status.value.licenseStatus = 'REVOKED'
+      status.value.isUsable = false
       expiryInfo.value = { expiryDate: null, daysRemaining: null, tone: 'expired' }
     } finally {
+      lastCheckedAt.value = new Date().toISOString()
       isChecking.value = false
     }
   }
@@ -102,10 +120,12 @@ export function useLicenseStatusAdapter() {
         return 'warning'
       case 'expired':
         return 'error'
+      case 'unlimited':
+        return 'success'
     }
   })
 
   onMounted(() => void refreshLicenseStatus())
 
-  return { status, isChecking, indicator, refreshLicenseStatus, expiryInfo, expiryTone }
+  return { status, isChecking, indicator, refreshLicenseStatus, expiryInfo, expiryTone, lastCheckedAt }
 }

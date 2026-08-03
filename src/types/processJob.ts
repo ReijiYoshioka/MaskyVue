@@ -40,6 +40,18 @@ export interface GeneratedFileResource {
   expiresAt: string | null
 }
 
+/** files[*].errors の1要素(README: location/id/日本語message)。成功時は空配列。 */
+export interface ProcessedImageFileError {
+  location: string
+  id: string
+  message: string
+}
+
+/** files[*].original (README: 保持された未マスキング元画像。専用の thumbnail を持つ)。 */
+export interface OriginalFileResource extends GeneratedFileResource {
+  thumbnail: GeneratedFileResource | null
+}
+
 export interface ProcessedImageFileResult {
   displayName: string
   downloadName: string | null
@@ -51,7 +63,9 @@ export interface ProcessedImageFileResult {
   detectedTextCount: number | null
   textTimeSeconds: number | null
   thumbnail: GeneratedFileResource | null
-  error: string | null
+  /** 保持された未マスキングの元画像(README: files[*].original)。無ければ null。 */
+  original: OriginalFileResource | null
+  errors: ProcessedImageFileError[]
 }
 
 export interface JobSubmissionResponse {
@@ -63,12 +77,23 @@ export interface JobSubmissionResponse {
   expiresAt: string | null
 }
 
+/** README: このジョブの登録時に確定した不変の実行パラメータ。regex はキー=名前、値=正規表現のOR条件。 */
+export interface ExecutionParameters {
+  faceCheck: boolean
+  faceMask: boolean
+  textCheck: boolean
+  textMask: boolean
+  regex: Record<string, string> | null
+}
+
 export interface JobStatusResponse {
   status: ProcessJobStatus
+  executionParameters: ExecutionParameters | null
   uploadedFiles: FileCounts
   extractedImages: FileCounts
   authRequirements: AuthRequirements | null
   resultFile: GeneratedFileResource | null
+  resultSummary: GeneratedFileResource | null
   files: ProcessedImageFileResult[]
   error: { errorId: string; message: string } | null
   message: string | null
@@ -79,11 +104,20 @@ export interface JobStatusResponse {
  *  「自分/他人」の判定はサーバーが返す access ではなく、
  *  クライアントが保持する jobTokenStore のトークン有無で行う(README:
  *  ユーザー単位の認証システムは存在せず、トークンの所持が唯一の判定材料)。 */
+/** README: 一覧では検知統計が公開設定の場合のみ返る、regexを含まない簡略版の実行パラメータ。 */
+export interface ListExecutionParameters {
+  faceCheck: boolean
+  faceMask: boolean
+  textCheck: boolean
+  textMask: boolean
+}
+
 export interface JobListEntry {
   jobId: string
   startDate: string
   expiryDate: string
   status: ProcessJobStatus
+  executionParameters: ListExecutionParameters | null
   uploadedFiles: FileCounts
   extractedImages: FileCounts
   detectionStats: { detectedFaceCount: number; detectedTextCount: number } | null
@@ -158,6 +192,30 @@ function parseGeneratedFileResource(value: unknown): GeneratedFileResource | nul
   return { displayName, downloadName, mediaType, url, expiresAt: asString(json.expires_at) }
 }
 
+/** files[*].original (README: 通常のダウンロード項目 + 専用の thumbnail)。 */
+function parseOriginalFileResource(value: unknown): OriginalFileResource | null {
+  const base = parseGeneratedFileResource(value)
+  if (base === null) return null
+  const json = value as Json
+  return { ...base, thumbnail: parseGeneratedFileResource(json.thumbnail) }
+}
+
+/** files[*].errors (README: location/id/日本語message の配列。成功時は空配列)。 */
+function parseProcessedImageFileErrors(value: unknown): ProcessedImageFileError[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return null
+      const json = entry as Json
+      const location = asString(json.location)
+      const id = asString(json.id)
+      const message = asString(json.message)
+      if (location === null || id === null || message === null) return null
+      return { location, id, message }
+    })
+    .filter((entry): entry is ProcessedImageFileError => entry !== null)
+}
+
 function parseProcessedImageFileResult(value: unknown): ProcessedImageFileResult {
   const json = asJson(value, 'files[]')
   const displayName = asString(json.display_name)
@@ -170,12 +228,13 @@ function parseProcessedImageFileResult(value: unknown): ProcessedImageFileResult
     mediaType: asString(json.media_type),
     url: asString(json.url),
     expiresAt: asString(json.expires_at),
-    detectedFaceCount: asNumber(json.detected_face_count),
-    faceTimeSeconds: asNumber(json.face_time_seconds),
-    detectedTextCount: asNumber(json.detected_text_count),
-    textTimeSeconds: asNumber(json.text_time_seconds),
+    detectedFaceCount: normalizeMetric(asNumber(json.detected_face_count)),
+    faceTimeSeconds: normalizeMetric(asNumber(json.face_time_seconds)),
+    detectedTextCount: normalizeMetric(asNumber(json.detected_text_count)),
+    textTimeSeconds: normalizeMetric(asNumber(json.text_time_seconds)),
     thumbnail: parseGeneratedFileResource(json.thumbnail),
-    error: asString(json.error),
+    original: parseOriginalFileResource(json.original),
+    errors: parseProcessedImageFileErrors(json.errors),
   }
 }
 
@@ -194,6 +253,31 @@ export function parseJobSubmissionResponse(value: unknown): JobSubmissionRespons
     pollingUrls: parsePollingUrls(json.polling_urls),
     expiresAt: asString(json.expires_at),
   }
+}
+
+function parseExecutionParameters(value: unknown): ExecutionParameters | null {
+  if (typeof value !== 'object' || value === null) return null
+  const json = value as Json
+  const faceCheck = json.face_check
+  const faceMask = json.face_mask
+  const textCheck = json.text_check
+  const textMask = json.text_mask
+  if (
+    typeof faceCheck !== 'boolean' ||
+    typeof faceMask !== 'boolean' ||
+    typeof textCheck !== 'boolean' ||
+    typeof textMask !== 'boolean'
+  ) {
+    return null
+  }
+  const regexJson = json.regex
+  const regex =
+    typeof regexJson === 'object' && regexJson !== null
+      ? Object.fromEntries(
+          Object.entries(regexJson as Json).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+        )
+      : null
+  return { faceCheck, faceMask, textCheck, textMask, regex }
 }
 
 export function parseJobStatusResponse(value: unknown): JobStatusResponse {
@@ -215,10 +299,12 @@ export function parseJobStatusResponse(value: unknown): JobStatusResponse {
 
   return {
     status: status as ProcessJobStatus,
+    executionParameters: parseExecutionParameters(json.execution_parameters),
     uploadedFiles: parseFileCounts(json.uploaded_files, 'uploaded_files'),
     extractedImages: parseFileCounts(json.extracted_images, 'extracted_images'),
     authRequirements: parseAuthRequirements(json.metadata),
     resultFile: parseGeneratedFileResource(json.result_file),
+    resultSummary: parseGeneratedFileResource(json.result_summary),
     files,
     error,
     message: asString(json.message),
@@ -245,11 +331,27 @@ export function parseJobListResponse(value: unknown): JobListResponse {
                 detectedTextCount: asNumber((statsJson as Json).detected_text_count) ?? 0,
               }
             : null
+        const execJson = j.execution_parameters
+        const executionParameters =
+          typeof execJson === 'object' &&
+          execJson !== null &&
+          typeof (execJson as Json).face_check === 'boolean' &&
+          typeof (execJson as Json).face_mask === 'boolean' &&
+          typeof (execJson as Json).text_check === 'boolean' &&
+          typeof (execJson as Json).text_mask === 'boolean'
+            ? {
+                faceCheck: (execJson as Json).face_check as boolean,
+                faceMask: (execJson as Json).face_mask as boolean,
+                textCheck: (execJson as Json).text_check as boolean,
+                textMask: (execJson as Json).text_mask as boolean,
+              }
+            : null
         return {
           jobId,
           startDate: asString(j.start_date) ?? '',
           expiryDate: asString(j.expiry_date) ?? '',
           status: status as ProcessJobStatus,
+          executionParameters,
           uploadedFiles: parseFileCounts(j.uploaded_files, 'uploaded_files'),
           extractedImages: parseFileCounts(j.extracted_images, 'extracted_images'),
           detectionStats: stats,
@@ -278,6 +380,9 @@ export interface UploadFileGroup {
   images: ProcessedImageFileResult[]
   detectedCount: number
   errorCount: number
+  /** モックの file-summary-bar「目 / 文字」内訳に相当する、グループ内の検知数合計。 */
+  faceCount: number
+  textCount: number
 }
 
 /** files[] の displayName ("bundle.zip/nested.zip/image_1.png") の先頭セグメントで
@@ -300,7 +405,9 @@ export function groupFilesByUploadFile(files: ProcessedImageFileResult[]): Uploa
     detectedCount: images.filter(
       (img) => (img.detectedFaceCount ?? 0) > 0 || (img.detectedTextCount ?? 0) > 0,
     ).length,
-    errorCount: images.filter((img) => img.error !== null).length,
+    errorCount: images.filter((img) => img.errors.length > 0).length,
+    faceCount: images.reduce((sum, img) => sum + Math.max(0, img.detectedFaceCount ?? 0), 0),
+    textCount: images.reduce((sum, img) => sum + Math.max(0, img.detectedTextCount ?? 0), 0),
   }))
 }
 

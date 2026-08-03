@@ -47,6 +47,8 @@ body {
     'Hiragino Sans',
     'Yu Gothic UI',
     sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
   background: var(--mk-background);
 }
 
