@@ -2,7 +2,7 @@
 
 Masky の本番ユーザーGUI（Vue 3 + Vite + TypeScript）。
 MaskyFlutter を参照実装（仕様書）とし、最終的に Flutter を置き換える。詳細は親フォルダの [../plan.md](../plan.md) を参照。
-接続の仕組みは [ARCHITECTURE.md](ARCHITECTURE.md)、配色・タイポグラフィ等のデザイントークンは [DESIGN.md](DESIGN.md) を参照。
+接続の仕組みは [ARCHITECTURE.md](ARCHITECTURE.md) を参照。
 
 ## 現状
 
@@ -12,7 +12,8 @@ MaskyFlutter を参照実装（仕様書）とし、最終的に Flutter を置�
 - **新しいタスク（アップロード）**: 画像 / ZIP（再帰展開） / PDF / Office をまとめて登録し、検知対象（目・文字）とチェックのみ／チェック＋マスクを選択してキューへ送信する。
 - **作業キュー**: 全ジョブ（自分のみ／全員切替可）の状態一覧。実行中ジョブがある間、8秒間隔で自動更新（カウントダウン表示）。トークンによる一時停止／再開／キャンセル／優先実行。
 - **処理結果**: タスク → アップロードファイル → 画像の3階層ドリルダウン。絞り込み・検索・ページング、Before/After比較、マスク済み画像の一括ダウンロード（ZIP生成）。
-- **共通設定**: ライセンス状態表示・登録。正規表現パターン管理はUI未実装（下記「既知の課題」参照）。
+- **共通設定**: ライセンス状態表示・登録。正規表現パターンの複数管理（追加・削除・構文チェック・初期値リセット）は
+  `user-api` 側に `/regex-patterns` 系エンドポイントが存在するが、UIには未実装。
 
 ## 開発
 
@@ -33,11 +34,7 @@ npm run dev      # http://localhost:53334 （Flutter dev の 53333 と衝突し�
 - [src/components/JobListPanel.vue](src/components/JobListPanel.vue) — 作業キュー
 - [src/components/TaskResultsBrowser.vue](src/components/TaskResultsBrowser.vue) — 処理結果（タスク一覧・タスク詳細）
 - [src/components/ResultExplorer.vue](src/components/ResultExplorer.vue) — 処理結果（ファイル→画像ドリルダウン）
+- [src/components/FlowNav.vue](src/components/FlowNav.vue) — 処理結果画面の現在地ナビ（タスク→ファイル→画像）
 - [src/components/SettingsPage.vue](src/components/SettingsPage.vue) — 共通設定・ライセンス
 - [src/api/](src/api/) — user-api との通信（`http.ts` が土台、`userApi.ts` が個々のエンドポイント）
 - [src/types/processJob.ts](src/types/processJob.ts) — ジョブ関連のレスポンス型とパース関数
-
-## 既知の課題
-
-- 正規表現パターンの複数管理（追加・削除・構文チェック・初期値リセット）は `user-api` 側に
-  `/regex-patterns` 系エンドポイントが存在するが、[SettingsPage.vue](src/components/SettingsPage.vue) には未実装。
