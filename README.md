@@ -1,13 +1,14 @@
 # MaskyVue
 
 Masky の本番ユーザーGUI（Vue 3 + Vite + TypeScript）。
-MaskyFlutter を参照実装（仕様書）とし、最終的に Flutter を置き換える。詳細は親フォルダの [../plan.md](../plan.md) を参照。
+MaskyFlutter を参照実装（仕様書）とし、最終的に Flutter を置き換える。詳細は本リポジトリと同じ階層に置かれる
+`ID-AI-Masky` 作業フォルダの `plan.md` を参照（別リポジトリのため直リンクなし）。
 接続の仕組みは [ARCHITECTURE.md](ARCHITECTURE.md) を参照。
 
 ## 現状
 
-`user-api`（FastAPI, port 6629）と疎通し、[ui-ux-requirements.md](../ui-ux-requirements.md) と
-[モック（index-03.html）](../index-03.html)に基づく4画面をひととおり実装済み。
+`user-api`（FastAPI, port 6629）と疎通し、`ID-AI-Masky` 作業フォルダの `ui-ux-requirements.md` と
+モック（`index-03.html`）に基づく4画面をひととおり実装済み（いずれも別リポジトリのため直リンクなし）。
 
 - **新しいタスク（アップロード）**: 画像 / ZIP（再帰展開） / PDF / Office をまとめて登録し、検知対象（目・文字）とチェックのみ／チェック＋マスクを選択してキューへ送信する。
 - **作業キュー**: 全ジョブ（自分のみ／全員切替可）の状態一覧。実行中ジョブがある間、8秒間隔で自動更新（カウントダウン表示）。トークンによる一時停止／再開／キャンセル／優先実行。
