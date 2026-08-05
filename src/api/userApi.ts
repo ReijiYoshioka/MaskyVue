@@ -59,7 +59,7 @@ export async function submitProcessingJob(
   const json = await requestJson(`/file-processing-jobs?${query.toString()}`, {
     method: 'POST',
     body: formData,
-    action: 'ファイルをアップロード',
+    action: 'ファイルのアップロード',
   })
   return parseJobSubmissionResponse(json)
 }
@@ -67,7 +67,7 @@ export async function submitProcessingJob(
 export async function fetchJobStatus(hybridPollingUrl: string, token: string): Promise<JobStatusResponse> {
   const json = await requestJson(hybridPollingUrl, {
     headers: { Authorization: token },
-    action: 'ジョブ状態を取得',
+    action: 'ジョブ状態の取得',
   })
   return parseJobStatusResponse(json)
 }
@@ -76,13 +76,13 @@ export async function fetchJobStatus(hybridPollingUrl: string, token: string): P
 export async function fetchJobStatusById(jobId: string, token: string | null): Promise<JobStatusResponse> {
   const json = await requestJson(`/file-processing-jobs/${encodeURIComponent(jobId)}?detail=hybrid`, {
     headers: token ? { Authorization: token } : {},
-    action: 'タスク詳細を取得',
+    action: 'タスク詳細の取得',
   })
   return parseJobStatusResponse(json)
 }
 
 export async function fetchGeneratedFileBlob(rawUrl: string, token: string): Promise<Blob> {
-  return requestBlob(rawUrl, token, '生成ファイルを取得')
+  return requestBlob(rawUrl, token, '生成ファイルの取得')
 }
 
 export function generatedFileDownloadUrl(rawUrl: string): string {
@@ -92,7 +92,7 @@ export function generatedFileDownloadUrl(rawUrl: string): string {
 /** サーバー上の期限切れでない全ジョブの一覧(他ユーザーのジョブも含む)。トークン不要。 */
 export async function fetchJobList(): Promise<JobListResponse> {
   const json = await requestJson('/file-processing-jobs', {
-    action: 'ジョブ一覧を取得',
+    action: 'ジョブ一覧の取得',
   })
   return parseJobListResponse(json)
 }
@@ -105,10 +105,10 @@ export interface JobActionResult {
 }
 
 const JOB_ACTION_LABELS: Record<JobAction, string> = {
-  pause: 'ジョブを一時停止',
-  resume: 'ジョブを再開',
-  cancel: 'ジョブをキャンセル',
-  prioritize: 'ジョブを優先実行',
+  pause: 'ジョブの一時停止',
+  resume: 'ジョブの再開',
+  cancel: 'ジョブのキャンセル',
+  prioritize: 'ジョブの優先実行',
 }
 
 /**

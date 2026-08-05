@@ -141,10 +141,12 @@ function formatDateTime(value: string | null): string {
 }
 
 const daysRemainingDisplay = computed(() =>
-  expiryInfo.value.daysRemaining === null ? '（未設定）' : `残り ${expiryInfo.value.daysRemaining}日`,
+  expiryInfo.value.daysRemaining === null ? '未設定' : `残り ${expiryInfo.value.daysRemaining}日`,
 )
 
-const expiryDisplay = computed(() => formatDateTime(expiryInfo.value.expiryDate))
+const expiryDisplay = computed(() =>
+  expiryInfo.value.expiryDate === null ? '-' : formatDateTime(expiryInfo.value.expiryDate),
+)
 const lastCheckedDisplay = computed(() => formatDateTime(lastCheckedAt.value))
 const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
 </script>

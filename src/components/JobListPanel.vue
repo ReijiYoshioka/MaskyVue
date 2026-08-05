@@ -335,12 +335,12 @@ defineExpose({ refresh })
 
     <p v-if="errorMessage" class="alert danger">
       <v-icon icon="mdi-alert-circle-outline" size="18" />
-      {{ errorMessage }}
+      <span class="alert-text" :title="errorMessage">{{ errorMessage }}</span>
     </p>
 
     <p v-if="actionMessage" class="alert info">
       <v-icon icon="mdi-information-outline" size="18" />
-      {{ actionMessage }}
+      <span class="alert-text" :title="actionMessage">{{ actionMessage }}</span>
     </p>
 
     <div class="queue-strip">
@@ -651,6 +651,15 @@ defineExpose({ refresh })
   border: 1px solid;
   border-radius: 12px;
   font-size: 14px;
+}
+
+/* 詳細はホバー時のtitle属性で見せる(ネイティブツールチップ)。通常時は1行に切り詰めて画面を占有しない。 */
+.alert-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: help;
 }
 
 .alert.danger {

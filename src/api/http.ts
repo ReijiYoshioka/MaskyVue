@@ -8,9 +8,10 @@ export class ApiRequestError extends Error {}
 /**
  * サーバーは常に {"detail": {"error_id": ..., "message": "日本語の説明"}} 形式でエラーを返す
  * (shared/utils/api_endpoints.py api_error_detail)。生の JSON をそのまま利用者に見せず、
- * 人が読める message だけを抜き出す。パースできない場合のみ HTTP ステータスにフォールバックする。
+ * 人が読める message だけを抜き出す。パースできない場合のみ汎用メッセージにフォールバックする
+ * (HTTPステータスコードは利用者に意味を持たないため表示しない)。
  */
-function extractErrorMessage(action: string, status: number, bodyText: string): string {
+function extractErrorMessage(action: string, bodyText: string): string {
   try {
     const parsed = JSON.parse(bodyText) as { detail?: { message?: unknown } }
     const message = parsed.detail?.message
@@ -18,7 +19,7 @@ function extractErrorMessage(action: string, status: number, bodyText: string): 
   } catch {
     // 本文が JSON でない場合は下のフォールバックを使う
   }
-  return `${action}に失敗しました（サーバーエラー: ${status}）。時間を置いて再度お試しください。`
+  return `${action}に失敗しました。時間を置いて再度お試しください。`
 }
 
 /**
@@ -70,7 +71,7 @@ export async function requestJson(rawUrl: string, options: RequestOptions): Prom
   )
   const bodyText = await res.text()
   if (!res.ok) {
-    throw new ApiRequestError(extractErrorMessage(options.action, res.status, bodyText))
+    throw new ApiRequestError(extractErrorMessage(options.action, bodyText))
   }
   return bodyText.length > 0 ? JSON.parse(bodyText) : null
 }
@@ -82,7 +83,7 @@ export async function requestBlob(rawUrl: string, token: string | null, action: 
   const res = await fetchWithTimeout(url, { headers }, DEFAULT_TIMEOUT_MS, action)
   if (!res.ok) {
     const bodyText = await res.text().catch(() => '')
-    throw new ApiRequestError(extractErrorMessage(action, res.status, bodyText))
+    throw new ApiRequestError(extractErrorMessage(action, bodyText))
   }
   return res.blob()
 }

@@ -110,8 +110,14 @@ const regexValid = computed(() => {
 })
 
 const isBusy = computed(() => phase.value === 'uploading' || phase.value === 'polling')
+const isLicenseInactive = computed(() => licenseIndicator.value.tone === 'inactive')
 const canSubmit = computed(
-  () => selectedFiles.value.length > 0 && hasTargetSelected.value && regexValid.value && !isBusy.value,
+  () =>
+    selectedFiles.value.length > 0 &&
+    hasTargetSelected.value &&
+    regexValid.value &&
+    !isBusy.value &&
+    !isLicenseInactive.value,
 )
 
 const jobListPanel = ref<InstanceType<typeof JobListPanel> | null>(null)
@@ -257,7 +263,11 @@ watch(phase, (value) => {
       <div v-if="licenseIndicator.tone === 'inactive'" class="license-banner">
         <div class="banner-main">
           <v-icon icon="mdi-alert-circle" class="icon" />
-          <span>ライセンスが未認証です。</span>
+          <span>
+            ライセンスが未認証です。
+            <a href="#" @click.prevent="activeTab = 'settings'">共通設定</a>
+            で登録してください。
+          </span>
         </div>
       </div>
       <div v-else-if="expiryInfo.daysRemaining !== null && expiryInfo.daysRemaining < 30" class="license-banner">
@@ -461,22 +471,31 @@ watch(phase, (value) => {
                       <strong>{{ targetSummaryLabel }}</strong>
                     </div>
                   </div>
-                  <v-btn
-                    class="btn primary large block mt-16"
-                    :disabled="!canSubmit"
-                    :loading="isBusy"
-                    @click="onSubmit"
-                  >
-                    <v-icon icon="mdi-tray-arrow-up" start size="18" />
-                    タスクを登録する
-                  </v-btn>
+                  <v-tooltip :disabled="!isLicenseInactive" location="top">
+                    <template #activator="{ props: tooltipProps }">
+                      <span v-bind="tooltipProps" class="d-block mt-16">
+                        <v-btn
+                          class="btn primary large block"
+                          :disabled="!canSubmit"
+                          :loading="isBusy"
+                          @click="onSubmit"
+                        >
+                          <v-icon icon="mdi-tray-arrow-up" start size="18" />
+                          タスクを登録する
+                        </v-btn>
+                      </span>
+                    </template>
+                    ライセンスを設定画面で登録してください
+                  </v-tooltip>
                   <div class="registration-guard" :class="{ ready: canSubmit }">
                     {{
                       canSubmit
                         ? `${selectedFiles.length}件のファイルをキューへ登録できます`
-                        : selectedFiles.length
-                          ? 'チェック対象を1つ以上選択してください'
-                          : '最初にファイルを追加してください'
+                        : isLicenseInactive
+                          ? 'ライセンスを設定画面で登録してください'
+                          : selectedFiles.length
+                            ? 'チェック対象を1つ以上選択してください'
+                            : '最初にファイルを追加してください'
                     }}
                   </div>
                   <div class="compact-notes">
@@ -548,9 +567,9 @@ watch(phase, (value) => {
   <div class="toast-root" aria-live="polite" aria-atomic="true">
     <div v-for="item in toast.items" :key="item.id" class="toast" :class="{ error: item.type === 'error' }">
       <v-icon :icon="item.type === 'error' ? 'mdi-alert-circle-outline' : 'mdi-check'" size="19" />
-      <div>
-        <strong>{{ item.title }}</strong>
-        <span v-if="item.message">{{ item.message }}</span>
+      <div class="toast-body">
+        <strong :title="item.title">{{ item.title }}</strong>
+        <span v-if="item.message" :title="item.message">{{ item.message }}</span>
       </div>
     </div>
   </div>
@@ -592,6 +611,7 @@ watch(phase, (value) => {
 }
 
 * { box-sizing: border-box; }
+a { color: inherit; text-decoration: none; }
 </style>
 
 <style scoped>
@@ -644,9 +664,10 @@ watch(phase, (value) => {
   display: block;
   margin-top: 3px;
   color: #8fa0b9;
-  font-size: 10px;
-  letter-spacing: .12em;
-  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .nav {
@@ -1602,10 +1623,8 @@ main:focus {
 }
 
 .toast {
-  min-width: 320px;
-  width: max-content;
+  width: 320px;
   max-width: calc(100vw - 44px);
-  overflow-x: auto;
   display: flex;
   align-items: flex-start;
   gap: 11px;
@@ -1629,18 +1648,28 @@ main:focus {
   color: #ff9fa8;
 }
 
+/* 長いメッセージで右下トーストが画面を占有しないよう1行に切り詰め、詳細はホバーのtitle属性で見せる。 */
+.toast-body {
+  min-width: 0;
+}
+
 .toast strong {
   display: block;
+  overflow: hidden;
   font-size: 13.5px;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .toast span {
   display: block;
   margin-top: 2px;
+  overflow: hidden;
   color: #b7c3d6;
   font-size: 12.5px;
   white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: help;
 }
 
 @keyframes toast-in {
