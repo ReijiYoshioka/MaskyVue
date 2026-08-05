@@ -7,21 +7,26 @@ export interface LicenseExpiryInfo {
   tone: 'active' | 'soon' | 'expired' | 'unlimited'
 }
 
+// モジュールスコープで保持し、App.vue と SettingsPage.vue など複数箇所から呼んでも
+// 同じ状態を共有する(シングルトン)。設定画面でライセンスを登録した直後に、
+// 画面上部の警告バナー側が古い状態のまま取り残される、という不整合を防ぐため。
+const status = ref<LicenseStatusResponse>({
+  sessionId: null,
+  licenseStatus: 'NOT_ACTIVATED',
+  expiresAt: null,
+  isUsable: false,
+  isAdmin: false,
+})
+const isChecking = ref(true)
+const expiryInfo = ref<LicenseExpiryInfo>({
+  expiryDate: null,
+  daysRemaining: null,
+  tone: 'expired',
+})
+const lastCheckedAt = ref<string | null>(null)
+let hasStartedInitialFetch = false
+
 export function useLicenseStatusAdapter() {
-  const status = ref<LicenseStatusResponse>({
-    sessionId: null,
-    licenseStatus: 'NOT_ACTIVATED',
-    expiresAt: null,
-    isUsable: false,
-    isAdmin: false,
-  })
-  const isChecking = ref(true)
-  const expiryInfo = ref<LicenseExpiryInfo>({
-    expiryDate: null,
-    daysRemaining: null,
-    tone: 'expired',
-  })
-  const lastCheckedAt = ref<string | null>(null)
 
   function calculateExpiry(
     eyeEndDate?: string | null,
@@ -125,7 +130,13 @@ export function useLicenseStatusAdapter() {
     }
   })
 
-  onMounted(() => void refreshLicenseStatus())
+  // 状態はシングルトンで共有されるため、初回の取得は最初にマウントされた
+  // コンポーネントの分だけ行えばよい(2箇所目以降での再フェッチは不要)。
+  onMounted(() => {
+    if (hasStartedInitialFetch) return
+    hasStartedInitialFetch = true
+    void refreshLicenseStatus()
+  })
 
   return { status, isChecking, indicator, refreshLicenseStatus, expiryInfo, expiryTone, lastCheckedAt }
 }

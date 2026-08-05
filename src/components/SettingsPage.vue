@@ -67,11 +67,10 @@ function useSettingsLicense() {
         body: JSON.stringify({ new_key: trimmedKey }),
       })
       if (response.ok) {
-        const data = await response.json().catch(() => ({}))
-        const messages = Object.values(data)
-          .map((entry) => (typeof entry === 'object' && entry !== null ? (entry as { message?: string }).message : null))
-          .filter((message): message is string => Boolean(message))
-        const message = messages.length > 0 ? messages.join(' / ') : 'ライセンスを認証しました。'
+        // サーバーは常に英語固定文("The licence key was updated successfully."等)を
+        // message に返す(shared/utils/serial_endpoints.py)。バックエンドごとに同じ文が
+        // 重複表示されるだけで利用者には意味がないため、message は使わず日本語の固定文言にする。
+        const message = 'ライセンスを認証しました。'
         licenseFeedback.value = { tone: 'success', message }
         maskedSerial.value = `••••-••••-••••-${trimmedKey.slice(-4).toUpperCase()}`
         localStorage.setItem(MASKED_SERIAL_STORAGE_KEY, maskedSerial.value)
