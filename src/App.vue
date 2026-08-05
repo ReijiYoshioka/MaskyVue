@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { DEFAULT_TEXT_REGEX } from '@/api/userApi'
 import JobListPanel from '@/components/JobListPanel.vue'
 import TaskResultsBrowser from '@/components/TaskResultsBrowser.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import { useProcessImage } from '@/composables/useProcessImage'
 import { useLicenseStatusAdapter } from '@/composables/useLicenseStatusAdapter'
+import { useRegexPatterns } from '@/composables/useRegexPatterns'
 import { useToast } from '@/composables/useToast'
 import { fileKind, FILE_KIND_ICONS, fileTypeLabel } from '@/utils/fileKind'
+import type { RegexPattern } from '@/types/regexPattern'
 
 const { phase, submit, errorMessage } = useProcessImage()
 const toast = useToast()
@@ -20,6 +21,8 @@ const activeTab = ref<'upload' | 'result' | 'jobs' | 'settings'>('upload')
 const ACTIVE_TAB_STORAGE_KEY = 'masky-vue-active-tab'
 
 onMounted(() => {
+  ensureRegexPatternsLoaded()
+
   const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY)
   if (savedTab === 'upload' || savedTab === 'jobs' || savedTab === 'result' || savedTab === 'settings') {
     activeTab.value = savedTab
@@ -97,17 +100,99 @@ const targetSummaryLabel = computed(() => {
 })
 const processingModeLabel = computed(() => (shouldMask.value ? 'チェック＋マスク' : 'チェックのみ'))
 
-const textRegex = ref(DEFAULT_TEXT_REGEX)
+// 文字検知用の正規表現(共通設定画面と共有する全ユーザー共有パターンから、
+// このタスクに使う分だけ複数選択する)。選択状態(selectedNames)も含めて
+// useRegexPatterns 内で共有するため、共通設定画面のチェックボックスと
+// ここのダイアログのチェックボックスは同じ状態を指す。
+// ダイアログの構成はMaskyFlutter版(lib/widgets/settings.dart の
+// _RegexPatternDialog)に合わせ、選択に加えて一覧上での追加・編集・削除・初期化もできる。
+const {
+  patterns: availableRegexPatterns,
+  isLoading: isRegexPatternsLoading,
+  loadError: regexPatternsLoadError,
+  refresh: refreshRegexPatterns,
+  addOrUpdate: addOrUpdateRegexPattern,
+  remove: removeRegexPattern,
+  resetToDefaults: resetRegexPatternsToDefaults,
+  ensureLoaded: ensureRegexPatternsLoaded,
+  selectedNames: selectedRegexPatternNames,
+  selectedPatterns: selectedRegexPatterns,
+} = useRegexPatterns()
+const isRegexSelectorOpen = ref(false)
+
 const regexValid = computed(() => {
   if (!detectText.value) return true
-  if (!textRegex.value.trim()) return false
-  try {
-    new RegExp(textRegex.value)
-    return true
-  } catch {
-    return false
-  }
+  return selectedRegexPatterns.value.length > 0
 })
+
+// ダイアログ内の追加/編集フォーム(Flutter版の _EditRegexPatternDialog に相当する内容を
+// 1つのダイアログに埋め込む)。isEditing の有無で「追加」/「編集」を切り替える。
+const isPatternFormOpen = ref(false)
+const editingOriginalName = ref<string | null>(null)
+const patternFormName = ref('')
+const patternFormValue = ref('')
+const isSavingPatternForm = ref(false)
+
+function openAddPatternForm() {
+  editingOriginalName.value = null
+  patternFormName.value = ''
+  patternFormValue.value = ''
+  isPatternFormOpen.value = true
+}
+
+function openEditPatternForm(pattern: RegexPattern) {
+  editingOriginalName.value = pattern.name
+  patternFormName.value = pattern.name
+  patternFormValue.value = pattern.value
+  isPatternFormOpen.value = true
+}
+
+async function savePatternForm() {
+  const name = patternFormName.value.trim()
+  const value = patternFormValue.value.trim()
+  if (!name || !value) return
+  isSavingPatternForm.value = true
+  try {
+    const originalName = editingOriginalName.value
+    await addOrUpdateRegexPattern(name, value, originalName ?? undefined)
+    toast.success(originalName ? '正規表現パターンを更新しました' : '正規表現パターンを追加しました', name)
+    isPatternFormOpen.value = false
+  } catch (err) {
+    toast.error('正規表現パターンの保存に失敗しました', err instanceof Error ? err.message : String(err))
+  } finally {
+    isSavingPatternForm.value = false
+  }
+}
+
+const deletingPatternName = ref<string | null>(null)
+
+async function deleteRegexPatternFromDialog(name: string) {
+  if (!window.confirm(`正規表現パターン「${name}」を削除しますか？`)) return
+  deletingPatternName.value = name
+  try {
+    await removeRegexPattern(name)
+    toast.success('正規表現パターンを削除しました', name)
+  } catch (err) {
+    toast.error('正規表現パターンの削除に失敗しました', err instanceof Error ? err.message : String(err))
+  } finally {
+    deletingPatternName.value = null
+  }
+}
+
+const isResettingRegexPatterns = ref(false)
+
+async function resetRegexPatternsFromDialog() {
+  if (!window.confirm('正規表現パターンを初期値(メールアドレス・日本国内電話番号・マイナンバー)に戻しますか？現在の登録内容は失われます。')) return
+  isResettingRegexPatterns.value = true
+  try {
+    await resetRegexPatternsToDefaults()
+    toast.success('正規表現パターンを初期値に戻しました')
+  } catch (err) {
+    toast.error('初期値への復元に失敗しました', err instanceof Error ? err.message : String(err))
+  } finally {
+    isResettingRegexPatterns.value = false
+  }
+}
 
 const isBusy = computed(() => phase.value === 'uploading' || phase.value === 'polling')
 const isLicenseInactive = computed(() => licenseIndicator.value.tone === 'inactive')
@@ -173,7 +258,7 @@ async function onSubmit() {
   await submit(selectedFiles.value, {
     targets: { face: detectFace.value, text: detectText.value },
     shouldMask: shouldMask.value,
-    regex: textRegex.value,
+    regexPatterns: selectedRegexPatterns.value,
   })
 }
 
@@ -453,6 +538,29 @@ watch(phase, (value) => {
                       <v-icon icon="mdi-alert-circle-outline" size="16" />
                       少なくとも1つのチェック対象を有効にしてください。
                     </p>
+
+                    <!-- 文字検知用の正規表現(共通設定で登録した一覧から複数選択、OR条件) -->
+                    <div v-if="detectText" class="field mt-16">
+                      <label>文字列検知の正規表現</label>
+                      <button
+                        type="button"
+                        class="regex-selector"
+                        :disabled="isBusy"
+                        @click="isRegexSelectorOpen = true"
+                      >
+                        <span v-if="selectedRegexPatterns.length === 0" class="mk-muted">未選択</span>
+                        <span v-else class="regex-selector-chips">
+                          <v-chip v-for="pattern in selectedRegexPatterns" :key="pattern.name" size="small" variant="tonal">
+                            {{ pattern.name }}
+                          </v-chip>
+                        </span>
+                        <v-icon icon="mdi-pencil-outline" size="16" />
+                      </button>
+                      <p v-if="!regexValid" class="validation-error">
+                        <v-icon icon="mdi-alert-circle-outline" size="16" />
+                        少なくとも1つの正規表現パターンを選択してください。
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -559,6 +667,82 @@ watch(phase, (value) => {
         <v-spacer />
         <v-btn variant="outlined" @click="shareUrlDialogOpen = false">キャンセル</v-btn>
         <v-btn color="primary" variant="flat" :disabled="!shareUrlInput.trim()" @click="submitSharedUrl">開く</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- 正規表現を選択(MaskyFlutter版 _RegexPatternDialog と同じ構成: 選択チェックボックス +
+       行内での編集・削除 + 新規追加 + 初期化。全ユーザー共有の一覧をここから直接管理できる) -->
+  <v-dialog v-model="isRegexSelectorOpen" max-width="480">
+    <v-card rounded="lg">
+      <v-card-title class="dialog-title row between">
+        正規表現を選択
+        <div class="row">
+          <v-btn icon="mdi-refresh" variant="text" size="small" title="最新の情報に更新" :loading="isRegexPatternsLoading" @click="refreshRegexPatterns" />
+          <v-btn icon="mdi-restore" variant="text" size="small" color="error" title="初期設定に戻す" :loading="isResettingRegexPatterns" @click="resetRegexPatternsFromDialog" />
+          <v-btn icon="mdi-close" variant="text" size="small" title="閉じる" @click="isRegexSelectorOpen = false" />
+        </div>
+      </v-card-title>
+      <v-card-text class="stack tight">
+        <p v-if="regexPatternsLoadError" class="alert danger">
+          <v-icon icon="mdi-alert-circle-outline" size="18" />
+          {{ regexPatternsLoadError }}
+        </p>
+        <p v-else-if="availableRegexPatterns.length === 0 && !isRegexPatternsLoading" class="mk-muted">
+          正規表現パターンが登録されていません。まず追加してください。
+        </p>
+        <div v-for="pattern in availableRegexPatterns" :key="pattern.name" class="regex-pattern-row">
+          <v-checkbox
+            v-model="selectedRegexPatternNames"
+            :value="pattern.name"
+            :label="pattern.name"
+            density="compact"
+            hide-details
+            class="grow"
+          />
+          <v-btn icon="mdi-pencil-outline" variant="text" size="small" title="編集" @click="openEditPatternForm(pattern)" />
+          <v-btn
+            icon="mdi-trash-can-outline"
+            variant="text"
+            size="small"
+            title="削除"
+            :loading="deletingPatternName === pattern.name"
+            @click="deleteRegexPatternFromDialog(pattern.name)"
+          />
+        </div>
+        <button type="button" class="btn outline block" @click="openAddPatternForm">
+          <v-icon icon="mdi-plus" size="16" />
+          新しい正規表現を追加
+        </button>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn color="primary" variant="flat" @click="isRegexSelectorOpen = false">閉じる</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- 正規表現の追加/編集フォーム(Flutter版 _EditRegexPatternDialog に相当。テスト文字列との
+       一致確認は行わず、サーバー側のPATCH自体が構文チェックを行う) -->
+  <v-dialog v-model="isPatternFormOpen" max-width="440">
+    <v-card rounded="lg">
+      <v-card-title class="dialog-title">{{ editingOriginalName ? '正規表現を編集' : '正規表現を追加' }}</v-card-title>
+      <v-card-text class="stack tight">
+        <v-text-field v-model="patternFormName" label="名前" density="comfortable" hide-details :disabled="isSavingPatternForm" autofocus />
+        <v-text-field v-model="patternFormValue" label="正規表現" density="comfortable" hide-details :disabled="isSavingPatternForm" />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="outlined" :disabled="isSavingPatternForm" @click="isPatternFormOpen = false">キャンセル</v-btn>
+        <v-btn
+          color="primary"
+          variant="flat"
+          :loading="isSavingPatternForm"
+          :disabled="!patternFormName.trim() || !patternFormValue.trim()"
+          @click="savePatternForm"
+        >
+          保存
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -1012,6 +1196,12 @@ main:focus {
   min-width: 0;
 }
 
+.regex-pattern-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* ---------- dropzone / file list ---------- */
 .dropzone {
   position: relative;
@@ -1200,6 +1390,31 @@ main:focus {
   color: var(--text-faint);
   font-size: 12.5px;
   line-height: 1.55;
+}
+
+.regex-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.regex-selector:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.regex-selector-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .segmented {

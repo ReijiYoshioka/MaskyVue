@@ -2,17 +2,118 @@
 // 共通設定画面。上司提示モック(index-03.html)の renderSettings に合わせて、
 // 正規表現パターン管理・ライセンス・データ保持基盤情報の3カードで構成する。
 //
-// 【フロントエンド実装上の制約】
-// UI/UX要件書2.9では正規表現パターンを「複数登録してOR条件で管理する、サーバー共通設定」
-// と定めているが、現状の user-api には複数パターンを保存するエンドポイントが存在せず、
-// タスク登録時に regex= を1つだけ渡す仕様になっている(FaceMask/user-api/workspace/request_processing.py)。
-// そのためここでは複数管理テーブルは実装せず、現状の制約を明記した上で
-// 「タスク登録時に指定する」という現実の使い方を案内する形にとどめる。
-import { computed, ref } from 'vue'
+// 正規表現パターンは user-api の /regex-patterns (GET/PATCH/DELETE/POST reset) で
+// 全ユーザー共有・サービス再起動後も保持される(FaceMask/user-api/workspace/regex_storage.py)。
+// 一覧のチェックボックスは「タスク登録時に使うかどうか」の選択であり(MaskyFlutter版
+// lib/widgets/settings.dart の _RegexPatternDialog と同じ意味)、選択状態は
+// useRegexPatterns で共有するため「新しいタスク」画面のダイアログとも同期する。
+import { computed, onMounted, ref } from 'vue'
 import { useLicenseStatusAdapter } from '@/composables/useLicenseStatusAdapter'
+import { useRegexPatterns } from '@/composables/useRegexPatterns'
 import { useToast } from '@/composables/useToast'
 
 const toast = useToast()
+
+const {
+  patterns: regexPatterns,
+  isLoading: isRegexLoading,
+  loadError: regexLoadError,
+  refresh: refreshRegexPatterns,
+  addOrUpdate: addOrUpdateRegexPattern,
+  remove: removeRegexPattern,
+  resetToDefaults: resetRegexPatternsToDefaults,
+  selectedNames: selectedRegexPatternNames,
+} = useRegexPatterns()
+
+onMounted(() => void refreshRegexPatterns())
+
+// サーバー(regex_storage.py)は元から日本語のメッセージを返すので、そのまま表示すればよい。
+function getReadableRegexErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+const isAddPatternDialogOpen = ref(false)
+const isAddingPattern = ref(false)
+const newPatternName = ref('')
+const newPatternValue = ref('')
+
+async function submitNewPattern() {
+  const name = newPatternName.value.trim()
+  const value = newPatternValue.value.trim()
+  if (!name || !value) return
+  isAddingPattern.value = true
+  try {
+    await addOrUpdateRegexPattern(name, value)
+    toast.success('正規表現パターンを追加しました', name)
+    newPatternName.value = ''
+    newPatternValue.value = ''
+    isAddPatternDialogOpen.value = false
+  } catch (err) {
+    toast.error('正規表現パターンの追加に失敗しました', getReadableRegexErrorMessage(err))
+  } finally {
+    isAddingPattern.value = false
+  }
+}
+
+const editingPatternName = ref<string | null>(null)
+const editingPatternValue = ref('')
+const isSavingEdit = ref(false)
+
+function startEditingPattern(name: string, value: string) {
+  editingPatternName.value = name
+  editingPatternValue.value = value
+}
+
+function cancelEditingPattern() {
+  editingPatternName.value = null
+  editingPatternValue.value = ''
+}
+
+async function saveEditingPattern() {
+  const name = editingPatternName.value
+  const value = editingPatternValue.value.trim()
+  if (!name || !value) return
+  isSavingEdit.value = true
+  try {
+    await addOrUpdateRegexPattern(name, value)
+    toast.success('正規表現パターンを更新しました', name)
+    cancelEditingPattern()
+  } catch (err) {
+    toast.error('正規表現パターンの更新に失敗しました', getReadableRegexErrorMessage(err))
+  } finally {
+    isSavingEdit.value = false
+  }
+}
+
+const deletingPatternName = ref<string | null>(null)
+
+async function deletePattern(name: string) {
+  if (!window.confirm(`正規表現パターン「${name}」を削除しますか？`)) return
+  deletingPatternName.value = name
+  try {
+    await removeRegexPattern(name)
+    toast.success('正規表現パターンを削除しました', name)
+  } catch (err) {
+    toast.error('正規表現パターンの削除に失敗しました', getReadableRegexErrorMessage(err))
+  } finally {
+    deletingPatternName.value = null
+  }
+}
+
+const isResettingPatterns = ref(false)
+
+async function resetPatterns() {
+  if (!window.confirm('正規表現パターンを初期値(メールアドレス・日本国内電話番号・マイナンバー)に戻しますか？現在の登録内容は失われます。')) return
+  isResettingPatterns.value = true
+  try {
+    await resetRegexPatternsToDefaults()
+    toast.success('正規表現パターンを初期値に戻しました')
+  } catch (err) {
+    toast.error('初期値への復元に失敗しました', getReadableRegexErrorMessage(err))
+  } finally {
+    isResettingPatterns.value = false
+  }
+}
 
 const {
   licenseIndicator,
@@ -169,20 +270,114 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
       <div class="card-header">
         <div class="card-title">
           <h3>文字検知の正規表現パターン</h3>
-          <p>個人情報として扱う文字パターンを指定します</p>
+          <p>登録した{{ regexPatterns.length }}件をOR条件でOCR結果と照合します(タスク登録時に使う分を選択)</p>
         </div>
+        <v-btn color="primary" variant="flat" @click="isAddPatternDialogOpen = true">
+          <v-icon icon="mdi-plus" start size="18" />
+          パターンを追加
+        </v-btn>
       </div>
       <div class="card-body">
-        <div class="alert info">
-          <v-icon icon="mdi-information-outline" size="18" />
-          <div>
-            <strong>現状の制約</strong>
-            複数パターンをOR条件でサーバー共通管理する機能は、バックエンドAPIが未対応のため実装していません。
-            現在は「新しいタスク」の登録画面で、タスクごとに1つの正規表現を指定する形になっています。
-          </div>
+        <p v-if="regexLoadError" class="alert danger">
+          <v-icon icon="mdi-alert-circle-outline" size="18" />
+          {{ regexLoadError }}
+        </p>
+        <div v-else-if="isRegexLoading && regexPatterns.length === 0" class="mk-muted empty-note">読み込み中…</div>
+        <p v-else-if="regexPatterns.length === 0" class="mk-muted empty-note">
+          正規表現パターンが登録されていません。「パターンを追加」から登録してください。
+        </p>
+        <div v-else class="table-wrap">
+          <table class="pattern-table">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>正規表現</th>
+                <th class="checkbox-col"></th>
+                <th class="actions-col"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="pattern in regexPatterns" :key="pattern.name">
+                <td><strong>{{ pattern.name }}</strong></td>
+                <td>
+                  <template v-if="editingPatternName === pattern.name">
+                    <v-text-field v-model="editingPatternValue" density="compact" hide-details />
+                  </template>
+                  <code v-else class="pattern-code">{{ pattern.value }}</code>
+                </td>
+                <td class="checkbox-col">
+                  <v-checkbox
+                    :model-value="selectedRegexPatternNames.includes(pattern.name)"
+                    density="compact"
+                    hide-details
+                    @update:model-value="(checked) => {
+                      const idx = selectedRegexPatternNames.indexOf(pattern.name)
+                      if (checked && idx === -1) selectedRegexPatternNames.push(pattern.name)
+                      else if (!checked && idx !== -1) selectedRegexPatternNames.splice(idx, 1)
+                    }"
+                  />
+                </td>
+                <td class="actions-col">
+                  <template v-if="editingPatternName === pattern.name">
+                    <v-btn size="small" color="primary" variant="flat" :loading="isSavingEdit" @click="saveEditingPattern">保存</v-btn>
+                    <v-btn size="small" variant="outlined" :disabled="isSavingEdit" @click="cancelEditingPattern">取消</v-btn>
+                  </template>
+                  <template v-else>
+                    <v-btn icon="mdi-pencil-outline" size="small" variant="text" density="comfortable" @click="startEditingPattern(pattern.name, pattern.value)" />
+                    <v-btn
+                      icon="mdi-trash-can-outline"
+                      size="small"
+                      variant="text"
+                      density="comfortable"
+                      :loading="deletingPatternName === pattern.name"
+                      @click="deletePattern(pattern.name)"
+                    />
+                  </template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="row between mt-16">
+          <p class="mk-muted note-text">登録時に構文チェックとテスト文字列へのマッチ確認を行います。</p>
+          <v-btn color="secondary" variant="outlined" :loading="isResettingPatterns" @click="resetPatterns">
+            <v-icon icon="mdi-restore" start size="16" />
+            初期値に戻す
+          </v-btn>
         </div>
       </div>
     </section>
+
+    <!-- パターン追加ダイアログ -->
+    <v-dialog v-model="isAddPatternDialogOpen" max-width="480">
+      <v-card rounded="lg">
+        <v-card-title class="dialog-title">新しい正規表現パターン</v-card-title>
+        <v-card-text class="stack tight">
+          <div class="field">
+            <label for="new-pattern-name">名称</label>
+            <v-text-field id="new-pattern-name" v-model="newPatternName" placeholder="例: 患者番号" density="comfortable" hide-details :disabled="isAddingPattern" />
+          </div>
+          <div class="field">
+            <label for="new-pattern-value">正規表現</label>
+            <v-text-field id="new-pattern-value" v-model="newPatternValue" placeholder="例: \d{2,10}" density="comfortable" hide-details :disabled="isAddingPattern" />
+          </div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="outlined" :disabled="isAddingPattern" @click="isAddPatternDialogOpen = false">キャンセル</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="isAddingPattern"
+            :disabled="!newPatternName.trim() || !newPatternValue.trim()"
+            @click="submitNewPattern"
+          >
+            追加
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <!-- ライセンス -->
     <section class="card">
@@ -396,10 +591,88 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
   border-color: #cde4f4;
 }
 
+.alert.danger {
+  color: #92323b;
+  background: #ffeff0;
+  border-color: #efc9cd;
+}
+
 .alert strong {
   display: block;
   margin-bottom: 2px;
   font-size: 14.5px;
+}
+
+.empty-note {
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.pattern-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.pattern-table th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--mk-border);
+  color: var(--mk-muted);
+  font-weight: 700;
+  text-align: left;
+}
+
+.pattern-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--mk-border);
+  vertical-align: middle;
+}
+
+.pattern-table .actions-col {
+  width: 1px;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.pattern-table .checkbox-col {
+  width: 1px;
+  padding-right: 40px;
+  white-space: nowrap;
+}
+
+.pattern-table .checkbox-col :deep(.v-selection-control) {
+  min-height: 0;
+}
+
+.pattern-code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #f3f5f8;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.row.between {
+  justify-content: space-between;
+}
+
+.note-text {
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.mt-16 {
+  margin-top: 16px;
+}
+
+.dialog-title {
+  padding: 20px 24px 4px;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .license-card {

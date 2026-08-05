@@ -7,6 +7,7 @@ import {
   type JobStatusResponse,
   type JobSubmissionResponse,
 } from '@/types/processJob'
+import { parseRegexPatternsResponse, type RegexPattern } from '@/types/regexPattern'
 
 export interface ProcessImageTargets {
   face: boolean
@@ -16,15 +17,12 @@ export interface ProcessImageTargets {
 /** サーバー(shared/utils/constants.py DEFAULT_REGEX)と同じ既定値 */
 export const DEFAULT_TEXT_REGEX = '\\d{2,10}'
 
-/** UIではまだ正規表現に名前を付けられないため、送信時は固定名を使う(README「regexはregex_name:regex_valueのJSONオブジェクト」)。 */
-const DEFAULT_REGEX_NAME = '文字検知パターン'
-
 export interface ProcessImageOptions {
   targets: ProcessImageTargets
   /** false の場合は検知(check)のみ行い、マスク画像は生成しない(UI/UX要件2.3「チェックのみ」)。 */
   shouldMask: boolean
-  /** 文字列検知に使う正規表現。text 有効時のみ送信される */
-  regex: string
+  /** 文字列検知に使う正規表現(複数選択可、OR条件)。text 有効時のみ送信される。 */
+  regexPatterns: RegexPattern[]
 }
 
 /**
@@ -33,20 +31,22 @@ export interface ProcessImageOptions {
  * README「不正なファイルや一部失敗時の挙動」: 目・文字列のどちらか一方でも失敗すると
  * マスキング画像自体が生成されないため、片方のバックエンドが不調な間は対象を絞る必要がある。
  *
- * regex は multipart フォームフィールドとして { 名前: 正規表現 } の JSON オブジェクトを渡す
- * 仕様に変わった(FaceMask commit 91c298e)。クエリの単純文字列では 422 invalid_parameter_combination になる。
+ * regex は multipart フォームフィールドとして { 名前: 正規表現, ... } の JSON オブジェクトを渡す
+ * (FaceMask commit 91c298e)。複数キーを渡すとOR条件で照合される(request_processing.py
+ * validate_processing_flags)。クエリの単純文字列では 422 invalid_parameter_combination になる。
  */
 export async function submitProcessingJob(
   files: File[],
   options: ProcessImageOptions,
 ): Promise<JobSubmissionResponse> {
-  const { targets, shouldMask, regex } = options
+  const { targets, shouldMask, regexPatterns } = options
   const formData = new FormData()
   for (const file of files) {
     formData.append('files', file)
   }
-  if (targets.text && regex.trim()) {
-    formData.append('regex', JSON.stringify({ [DEFAULT_REGEX_NAME]: regex.trim() }))
+  if (targets.text && regexPatterns.length > 0) {
+    const regexMap = Object.fromEntries(regexPatterns.map((pattern) => [pattern.name, pattern.value]))
+    formData.append('regex', JSON.stringify(regexMap))
   }
 
   const query = new URLSearchParams({
@@ -126,4 +126,46 @@ export async function requestJobAction(jobId: string, action: JobAction, token: 
     status: typeof result.status === 'string' ? result.status : '',
     message: typeof result.message === 'string' ? result.message : '',
   }
+}
+
+/**
+ * サーバー共通の正規表現パターン一覧(全ユーザーで共有、サービス再起動後も保持)。
+ * 参照: FaceMask/user-api/workspace/regex_storage.py
+ */
+export async function fetchRegexPatterns(): Promise<RegexPattern[]> {
+  const json = await requestJson('/regex-patterns', {
+    action: '正規表現一覧の取得',
+  })
+  return parseRegexPatternsResponse(json)
+}
+
+/** 1件を追加または更新する。同名が既にあれば値を上書きする(previous_valueは指定せず無条件更新)。 */
+export async function patchRegexPattern(name: string, value: string): Promise<RegexPattern[]> {
+  const json = await requestJson('/regex-patterns', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ regex_name: name, regex_value: value }),
+    action: '正規表現の登録',
+  })
+  return parseRegexPatternsResponse(json)
+}
+
+/** 1件を削除する(previous_valueは指定せず無条件削除)。 */
+export async function deleteRegexPattern(name: string): Promise<RegexPattern[]> {
+  const json = await requestJson('/regex-patterns', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ regex_name: name }),
+    action: '正規表現の削除',
+  })
+  return parseRegexPatternsResponse(json)
+}
+
+/** 一覧を初期値(メールアドレス・日本国内電話番号・マイナンバー)へ無条件で戻す。 */
+export async function resetRegexPatterns(): Promise<RegexPattern[]> {
+  const json = await requestJson('/regex-patterns/reset', {
+    method: 'POST',
+    action: '正規表現一覧の初期化',
+  })
+  return parseRegexPatternsResponse(json)
 }
