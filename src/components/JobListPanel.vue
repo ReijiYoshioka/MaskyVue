@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { toReadableMessage } from '@/api/http'
 import { fetchJobList, fetchJobStatusById, requestJobAction, type JobAction } from '@/api/userApi'
 import { getJobToken, pruneJobTokens, rememberJobToken } from '@/state/jobTokenStore'
 import { useToast } from '@/composables/useToast'
@@ -181,7 +182,7 @@ async function onAction(entry: JobListEntry, action: JobAction) {
     actionMessage.value = message
     toast.success(`${ACTION_LABELS[action]}を受け付けました`, entry.jobId)
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
+    const message = toReadableMessage(err, '時間を置いて再度お試しください。')
     errorMessage.value = message
     toast.error(`${ACTION_LABELS[action]}に失敗しました`, message)
   } finally {
@@ -268,7 +269,7 @@ async function refresh() {
     // 一覧に無い(期限切れで消えた)ジョブのトークンを掃除する
     pruneJobTokens(result.jobs.map((j) => j.jobId))
   } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : String(err)
+    errorMessage.value = toReadableMessage(err, 'ジョブ一覧の取得に失敗しました。時間を置いて再度お試しください。')
   } finally {
     loading.value = false
     autoRefreshCountdown.value = AUTO_REFRESH_SECONDS

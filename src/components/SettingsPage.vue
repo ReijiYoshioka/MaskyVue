@@ -8,6 +8,7 @@
 // lib/widgets/settings.dart の _RegexPatternDialog と同じ意味)、選択状態は
 // useRegexPatterns で共有するため「新しいタスク」画面のダイアログとも同期する。
 import { computed, onMounted, ref } from 'vue'
+import { toReadableMessage } from '@/api/http'
 import { useLicenseStatusAdapter } from '@/composables/useLicenseStatusAdapter'
 import { useRegexPatterns } from '@/composables/useRegexPatterns'
 import { useToast } from '@/composables/useToast'
@@ -28,8 +29,9 @@ const {
 onMounted(() => void refreshRegexPatterns())
 
 // サーバー(regex_storage.py)は元から日本語のメッセージを返すので、そのまま表示すればよい。
+// サーバー由来でない例外(ブラウザ/ライブラリの英語メッセージ)は日本語の固定文言に差し替える。
 function getReadableRegexErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  return toReadableMessage(err, '時間を置いて再度お試しください。')
 }
 
 const isAddPatternDialogOpen = ref(false)

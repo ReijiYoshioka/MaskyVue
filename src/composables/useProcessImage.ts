@@ -1,4 +1,5 @@
 import { onBeforeUnmount, ref } from 'vue'
+import { toReadableMessage } from '@/api/http'
 import { fetchJobStatus, submitProcessingJob, type ProcessImageOptions } from '@/api/userApi'
 import { rememberJobToken } from '@/state/jobTokenStore'
 import {
@@ -59,7 +60,7 @@ export function useProcessImage() {
     } catch (err) {
       clearPollTimer()
       phase.value = 'error'
-      errorMessage.value = err instanceof Error ? err.message : String(err)
+      errorMessage.value = toReadableMessage(err, '処理状況の確認に失敗しました。時間を置いて再度お試しください。')
     }
   }
 
@@ -75,7 +76,7 @@ export function useProcessImage() {
       await pollOnce(submitted)
     } catch (err) {
       phase.value = 'error'
-      errorMessage.value = err instanceof Error ? err.message : String(err)
+      errorMessage.value = toReadableMessage(err, 'タスクの登録に失敗しました。時間を置いて再度お試しください。')
     }
   }
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { toReadableMessage } from '@/api/http'
 import JobListPanel from '@/components/JobListPanel.vue'
 import TaskResultsBrowser from '@/components/TaskResultsBrowser.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
@@ -158,7 +159,7 @@ async function savePatternForm() {
     toast.success(originalName ? '正規表現パターンを更新しました' : '正規表現パターンを追加しました', name)
     isPatternFormOpen.value = false
   } catch (err) {
-    toast.error('正規表現パターンの保存に失敗しました', err instanceof Error ? err.message : String(err))
+    toast.error('正規表現パターンの保存に失敗しました', toReadableMessage(err, '時間を置いて再度お試しください。'))
   } finally {
     isSavingPatternForm.value = false
   }
@@ -173,7 +174,7 @@ async function deleteRegexPatternFromDialog(name: string) {
     await removeRegexPattern(name)
     toast.success('正規表現パターンを削除しました', name)
   } catch (err) {
-    toast.error('正規表現パターンの削除に失敗しました', err instanceof Error ? err.message : String(err))
+    toast.error('正規表現パターンの削除に失敗しました', toReadableMessage(err, '時間を置いて再度お試しください。'))
   } finally {
     deletingPatternName.value = null
   }
@@ -188,7 +189,7 @@ async function resetRegexPatternsFromDialog() {
     await resetRegexPatternsToDefaults()
     toast.success('正規表現パターンを初期値に戻しました')
   } catch (err) {
-    toast.error('初期値への復元に失敗しました', err instanceof Error ? err.message : String(err))
+    toast.error('初期値への復元に失敗しました', toReadableMessage(err, '時間を置いて再度お試しください。'))
   } finally {
     isResettingRegexPatterns.value = false
   }
@@ -593,17 +594,17 @@ watch(phase, (value) => {
                         </v-btn>
                       </span>
                     </template>
-                    ライセンスを設定画面で登録してください
+                    ライセンスを設定画面で登録してください。
                   </v-tooltip>
                   <div class="registration-guard" :class="{ ready: canSubmit }">
                     {{
                       canSubmit
                         ? `${selectedFiles.length}件のファイルをキューへ登録できます`
                         : isLicenseInactive
-                          ? 'ライセンスを設定画面で登録してください'
+                          ? 'ライセンスを設定画面で登録してください。'
                           : selectedFiles.length
-                            ? 'チェック対象を1つ以上選択してください'
-                            : '最初にファイルを追加してください'
+                            ? 'チェック対象を1つ以上選択してください。'
+                            : '最初にファイルを追加してください。'
                     }}
                   </div>
                   <div class="compact-notes">
@@ -749,13 +750,31 @@ watch(phase, (value) => {
 
   <!-- トースト通知(index-03.html の #toast-root / toast() に相当) -->
   <div class="toast-root" aria-live="polite" aria-atomic="true">
-    <div v-for="item in toast.items" :key="item.id" class="toast" :class="{ error: item.type === 'error' }">
-      <v-icon :icon="item.type === 'error' ? 'mdi-alert-circle-outline' : 'mdi-check'" size="19" />
-      <div class="toast-body">
-        <strong :title="item.title">{{ item.title }}</strong>
-        <span v-if="item.message" :title="item.message">{{ item.message }}</span>
-      </div>
-    </div>
+    <!-- エラーは要点(title)だけを表示し、詳細(message)はライセンス未登録時の
+         「タスクを登録する」ボタンと同じ v-tooltip でホバー時にだけ見せる。 -->
+    <v-tooltip
+      v-for="item in toast.items"
+      :key="item.id"
+      :disabled="item.type !== 'error' || !item.message"
+      location="top"
+    >
+      <template #activator="{ props: tooltipProps }">
+        <div
+          v-bind="tooltipProps"
+          class="toast"
+          :class="{ error: item.type === 'error' }"
+          @mouseenter="toast.pause(item.id)"
+          @mouseleave="toast.resume(item.id)"
+        >
+          <v-icon :icon="item.type === 'error' ? 'mdi-alert-circle-outline' : 'mdi-check'" size="19" />
+          <div class="toast-body">
+            <strong :title="item.title">{{ item.title }}</strong>
+            <span v-if="item.type !== 'error' && item.message" :title="item.message">{{ item.message }}</span>
+          </div>
+        </div>
+      </template>
+      {{ item.message }}
+    </v-tooltip>
   </div>
   </v-app>
 </template>

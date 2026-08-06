@@ -3,6 +3,7 @@
 // タスク一覧(カード) → タスク詳細(hero-summary + 指標カード + タブ) の2段構成にする。
 // タブ内の「ファイル一覧」より深い階層(画像グリッド・Before/After)は既存の ResultExplorer に委譲する。
 import { computed, ref, type Ref } from 'vue'
+import { toReadableMessage } from '@/api/http'
 import { fetchJobList, fetchJobStatusById, fetchGeneratedFileBlob } from '@/api/userApi'
 import { getJobToken, rememberJobToken, buildShareUrl } from '@/state/jobTokenStore'
 import { useToast } from '@/composables/useToast'
@@ -177,7 +178,7 @@ async function refreshList() {
     jobs.value = [...result.jobs].sort((a, b) => (a.startDate < b.startDate ? 1 : -1))
     loadedOnce.value = true
   } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : String(err)
+    errorMessage.value = toReadableMessage(err, 'タスク一覧の取得に失敗しました。時間を置いて再度お試しください。')
   } finally {
     loading.value = false
   }
@@ -281,7 +282,7 @@ async function loadTaskDetail(jobId: string) {
   try {
     selectedJobStatus.value = await fetchJobStatusById(jobId, getJobToken(jobId))
   } catch (err) {
-    detailError.value = err instanceof Error ? err.message : String(err)
+    detailError.value = toReadableMessage(err, 'タスク詳細の取得に失敗しました。時間を置いて再度お試しください。')
   } finally {
     detailLoading.value = false
   }
@@ -500,7 +501,7 @@ async function downloadGeneratedFile(
     URL.revokeObjectURL(objectUrl)
     toast.success('ダウンロードを開始しました', downloadName)
   } catch (err) {
-    toast.error('ダウンロードに失敗しました', err instanceof Error ? err.message : String(err))
+    toast.error('ダウンロードに失敗しました', toReadableMessage(err, '時間を置いて再度お試しください。'))
   } finally {
     loadingFlag.value = false
   }

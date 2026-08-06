@@ -4,6 +4,7 @@
 // (3カラム同時表示ではなく、レベルを1つずつ切り替えてブレッドクラムで現在地を示す)。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import JSZip from 'jszip'
+import { toReadableMessage } from '@/api/http'
 import { fetchGeneratedFileBlob } from '@/api/userApi'
 import { useGeneratedFileBlobs } from '@/composables/useGeneratedFileBlobs'
 import { useToast } from '@/composables/useToast'
@@ -267,7 +268,7 @@ async function saveMaskedImages(group: UploadFileGroup) {
 
     toast.success('ZIPを作成しました', `${addedCount}件のマスク画像を収録しています`)
   } catch (err) {
-    toast.error('ZIPの作成に失敗しました', err instanceof Error ? err.message : String(err))
+    toast.error('ZIPの作成に失敗しました', toReadableMessage(err, '時間を置いて再度お試しください。'))
   } finally {
     isSavingMaskedImages.value = false
   }

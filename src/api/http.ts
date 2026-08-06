@@ -6,6 +6,15 @@ const DEFAULT_TIMEOUT_MS = 20_000
 export class ApiRequestError extends Error {}
 
 /**
+ * catch (err) で受け取った例外を画面表示用の日本語メッセージに変換する。
+ * ApiRequestError(サーバーの日本語メッセージ由来)ならそのまま使い、それ以外
+ * (ブラウザ/ライブラリ組み込みの例外は英語のことが多い)は必ず fallback の日本語文言にする。
+ */
+export function toReadableMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiRequestError ? err.message : fallback
+}
+
+/**
  * サーバーは常に {"detail": {"error_id": ..., "message": "日本語の説明"}} 形式でエラーを返す
  * (shared/utils/api_endpoints.py api_error_detail)。生の JSON をそのまま利用者に見せず、
  * 人が読める message だけを抜き出す。パースできない場合のみ汎用メッセージにフォールバックする
@@ -46,7 +55,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number, acti
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new ApiRequestError(`${action} 中にタイムアウトしました。`)
     }
-    throw new ApiRequestError(`${action} 中にネットワークエラーが発生しました: ${(err as Error).message}`)
+    throw new ApiRequestError(`${action} 中にネットワークエラーが発生しました。通信環境をご確認のうえ、時間を置いて再度お試しください。`)
   } finally {
     clearTimeout(timer)
   }
@@ -73,7 +82,12 @@ export async function requestJson(rawUrl: string, options: RequestOptions): Prom
   if (!res.ok) {
     throw new ApiRequestError(extractErrorMessage(options.action, bodyText))
   }
-  return bodyText.length > 0 ? JSON.parse(bodyText) : null
+  if (bodyText.length === 0) return null
+  try {
+    return JSON.parse(bodyText)
+  } catch {
+    throw new ApiRequestError(`${options.action}の応答を解析できませんでした。時間を置いて再度お試しください。`)
+  }
 }
 
 /** 認証ヘッダーが必要な画像/ファイルを Blob として取得する。 */

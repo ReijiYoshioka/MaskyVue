@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { toReadableMessage } from '@/api/http'
 import {
   deleteRegexPattern,
   fetchRegexPatterns,
@@ -39,7 +40,7 @@ export function useRegexPatterns() {
         pruneSelection()
       }
     } catch (err) {
-      loadError.value = err instanceof Error ? err.message : String(err)
+      loadError.value = toReadableMessage(err, '正規表現パターンの取得に失敗しました。時間を置いて再度お試しください。')
     } finally {
       isLoading.value = false
     }
