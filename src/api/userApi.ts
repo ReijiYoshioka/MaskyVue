@@ -14,9 +14,6 @@ export interface ProcessImageTargets {
   text: boolean
 }
 
-/** サーバー(shared/utils/constants.py DEFAULT_REGEX)と同じ既定値 */
-export const DEFAULT_TEXT_REGEX = '\\d{2,10}'
-
 export interface ProcessImageOptions {
   targets: ProcessImageTargets
   /** false の場合は検知(check)のみ行い、マスク画像は生成しない(UI/UX要件2.3「チェックのみ」)。 */
