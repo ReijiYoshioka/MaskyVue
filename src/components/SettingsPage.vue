@@ -4,9 +4,9 @@
 //
 // 正規表現パターンは user-api の /regex-patterns (GET/PATCH/DELETE/POST reset) で
 // 全ユーザー共有・サービス再起動後も保持される(FaceMask/user-api/workspace/regex_storage.py)。
-// 一覧のチェックボックスは「タスク登録時に使うかどうか」の選択であり(MaskyFlutter版
-// lib/widgets/settings.dart の _RegexPatternDialog と同じ意味)、選択状態は
-// useRegexPatterns で共有するため「新しいタスク」画面のダイアログとも同期する。
+// 一覧のチェックボックスは「タスク登録時に使うかどうか」の選択。選択状態は
+// useRegexPatterns で共有するため、「新しいタスク」画面はここで選んだ内容を
+// そのまま使う(タスク登録画面側での再選択は行わない)。
 import { computed, onMounted, ref } from 'vue'
 import { toReadableMessage } from '@/api/http'
 import { useLicenseStatusAdapter } from '@/composables/useLicenseStatusAdapter'
