@@ -1,4 +1,5 @@
 import { computed, onMounted, ref } from 'vue'
+import { withStartupRetry } from '@/api/http'
 import type { LicenseStatusResponse, LicenseStatusIndicator } from '@/types/licenseStatus'
 
 export interface LicenseExpiryInfo {
@@ -74,28 +75,36 @@ export function useLicenseStatusAdapter() {
     }
   }
 
-  async function refreshLicenseStatus() {
+  async function fetchLicenseStatusOnce() {
+    const response = await fetch('/api/get-key-details?target=all')
+    if (!response.ok) throw new Error('Failed to fetch')
+
+    const data = await response.json()
+    const eyesValid = data['eye-masking']?.version && data['eye-masking']?.start_date
+    const ocrValid = data['ocr-masking']?.version && data['ocr-masking']?.start_date
+
+    const isUsable = eyesValid && ocrValid
+    const eyeEndDate = data['eye-masking']?.end_date
+    const ocrEndDate = data['ocr-masking']?.end_date
+
+    expiryInfo.value = calculateExpiry(eyeEndDate, ocrEndDate)
+
+    status.value = {
+      sessionId: null,
+      licenseStatus: isUsable ? 'ACTIVE' : 'NOT_ACTIVATED',
+      expiresAt: expiryInfo.value.expiryDate || null,
+      isUsable,
+      isAdmin: false,
+    }
+  }
+
+  async function refreshLicenseStatus(options?: { retryOnStartup?: boolean }) {
     isChecking.value = true
     try {
-      const response = await fetch('/api/get-key-details?target=all')
-      if (!response.ok) throw new Error('Failed to fetch')
-
-      const data = await response.json()
-      const eyesValid = data['eye-masking']?.version && data['eye-masking']?.start_date
-      const ocrValid = data['ocr-masking']?.version && data['ocr-masking']?.start_date
-
-      const isUsable = eyesValid && ocrValid
-      const eyeEndDate = data['eye-masking']?.end_date
-      const ocrEndDate = data['ocr-masking']?.end_date
-
-      expiryInfo.value = calculateExpiry(eyeEndDate, ocrEndDate)
-
-      status.value = {
-        sessionId: null,
-        licenseStatus: isUsable ? 'ACTIVE' : 'NOT_ACTIVATED',
-        expiresAt: expiryInfo.value.expiryDate || null,
-        isUsable,
-        isAdmin: false,
+      if (options?.retryOnStartup) {
+        await withStartupRetry(fetchLicenseStatusOnce)
+      } else {
+        await fetchLicenseStatusOnce()
       }
     } catch {
       status.value.licenseStatus = 'REVOKED'
@@ -135,7 +144,7 @@ export function useLicenseStatusAdapter() {
   onMounted(() => {
     if (hasStartedInitialFetch) return
     hasStartedInitialFetch = true
-    void refreshLicenseStatus()
+    void refreshLicenseStatus({ retryOnStartup: true })
   })
 
   return { status, isChecking, indicator, refreshLicenseStatus, expiryInfo, expiryTone, lastCheckedAt }

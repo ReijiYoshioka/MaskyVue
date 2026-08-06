@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { toReadableMessage } from '@/api/http'
+import { toReadableMessage, withStartupRetry } from '@/api/http'
 import { fetchJobList, fetchJobStatusById, requestJobAction, type JobAction } from '@/api/userApi'
 import { getJobToken, pruneJobTokens, rememberJobToken } from '@/state/jobTokenStore'
 import { useToast } from '@/composables/useToast'
@@ -258,11 +258,13 @@ async function verifyToken() {
   }
 }
 
-async function refresh() {
+async function refresh(options?: { retryOnStartup?: boolean }) {
   loading.value = true
   errorMessage.value = ''
   try {
-    const result = await fetchJobList()
+    // 初回ロードはコンテナ起動直後にバックエンドの準備が遅れているケースがあるため、
+    // ここでリトライして吸収する(手動更新・自動更新のポーリングでは使わない)。
+    const result = options?.retryOnStartup ? await withStartupRetry(fetchJobList) : await fetchJobList()
     jobs.value = result.jobs
     authRequirements.value = result.authRequirements
     loadedOnce.value = true
@@ -294,7 +296,7 @@ function tickCountdown() {
 }
 
 onMounted(() => {
-  void refresh()
+  void refresh({ retryOnStartup: true })
   countdownTimer = setInterval(tickCountdown, 1000)
 })
 onBeforeUnmount(() => {

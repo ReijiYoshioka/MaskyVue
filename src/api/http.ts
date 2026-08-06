@@ -61,6 +61,25 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number, acti
   }
 }
 
+/**
+ * コンテナ起動直後はバックエンドの準備(自己診断・依存ライブラリの読み込み)が
+ * フロントエンドより遅れて完了するため、初回ロード時の取得はここで数秒間リトライしてから
+ * 失敗を確定させる。ユーザー操作による再取得(手動更新・ポーリング等)には使わない。
+ */
+export async function withStartupRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const attempts = 8
+  const delayMs = 1500
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (attempt === attempts - 1) throw err
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+  throw new Error('unreachable')
+}
+
 export interface RequestOptions {
   method?: string
   headers?: Record<string, string>

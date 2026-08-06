@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { toReadableMessage } from '@/api/http'
+import { toReadableMessage, withStartupRetry } from '@/api/http'
 import {
   deleteRegexPattern,
   fetchRegexPatterns,
@@ -31,7 +31,9 @@ export function useRegexPatterns() {
     isLoading.value = true
     loadError.value = ''
     try {
-      patterns.value = await fetchRegexPatterns()
+      // 初回ロードはコンテナ起動直後にバックエンドの準備が遅れているケースがあるため、
+      // ここでリトライして吸収する(手動更新や選択操作等はこの関数を経由しない)。
+      patterns.value = await withStartupRetry(fetchRegexPatterns)
       hasLoadedOnce = true
       // まだ何も選んでいなければ全件を初期選択する(モックの「全パターンOR条件で照合」に合わせる)。
       if (selectedNames.value.length === 0 && patterns.value.length > 0) {
