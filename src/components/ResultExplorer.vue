@@ -158,7 +158,6 @@ const beforeThumbnailUrls = ref<Record<string, string>>({})
 
 type CompareMode = 'side' | 'before' | 'after' | 'overlay'
 const compareMode = ref<CompareMode>('side')
-const overlaySplit = ref(56)
 
 // beforeImageUrl が取得できた(サーバー保持の original、または単一画像アップロード)場合のみ before を使うモードを提示する。
 const canCompareBeforeAfter = computed(() => beforeImageUrl.value !== null)
@@ -317,7 +316,6 @@ async function openImage(image: ProcessedImageFileResult) {
   afterImageUrl.value = null
   beforeImageUrl.value = null
   compareMode.value = 'side'
-  overlaySplit.value = 56
 
   if (image.url) {
     afterImageUrl.value = await resolveBlobUrl(image.url)
@@ -721,23 +719,15 @@ defineExpose({ level, selectedGroup, selectedImage, backToFiles, backToImages })
               </figure>
             </div>
 
-            <!-- 重ねて比較(スライダー) -->
+            <!-- 重ねて比較(スライダー)。img-comparison-slider(MIT, https://img-comparison-slider.sneas.io/)
+                 を使い、境界線ドラッグ・キーボード操作・タッチ操作を自前実装せず既存のWeb Componentに委ねる。 -->
             <div v-else-if="compareMode === 'overlay'" class="result-explorer__overlay">
-              <div class="result-explorer__overlay-view" :style="{ '--split': overlaySplit + '%' }">
-                <img :src="beforeImageUrl!" alt="マスク前" />
-                <img class="result-explorer__overlay-after" :src="afterImageUrl!" alt="マスク後" />
-                <span class="result-explorer__overlay-label result-explorer__overlay-label--before">Before</span>
-                <span class="result-explorer__overlay-label result-explorer__overlay-label--after">After</span>
-                <span class="result-explorer__overlay-divider" />
-              </div>
-              <input
-                v-model.number="overlaySplit"
-                type="range"
-                min="0"
-                max="100"
-                class="result-explorer__overlay-slider"
-                aria-label="マスク前後の比較位置"
-              />
+              <img-comparison-slider class="result-explorer__overlay-slider-el">
+                <img slot="second" :src="beforeImageUrl!" alt="マスク前" />
+                <img slot="first" :src="afterImageUrl!" alt="マスク後" />
+                <span slot="first" class="result-explorer__overlay-label result-explorer__overlay-label--after">After</span>
+                <span slot="second" class="result-explorer__overlay-label result-explorer__overlay-label--before">Before</span>
+              </img-comparison-slider>
             </div>
           </template>
         </div>
@@ -1584,61 +1574,56 @@ defineExpose({ level, selectedGroup, selectedImage, backToFiles, backToImages })
   gap: 0.75rem;
 }
 
-.result-explorer__overlay-view {
-  --split: 56%;
-  position: relative;
+.result-explorer__overlay-slider-el {
+  --divider-color: #fff;
+  --default-handle-color: #fff;
+  width: 100%;
   aspect-ratio: 4 / 3;
-  overflow: hidden;
   border-radius: var(--mk-rounded-md);
   background: #111827;
 }
 
-.result-explorer__overlay-view img {
-  position: absolute;
-  inset: 0;
+.result-explorer__overlay-slider-el img {
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: contain;
+  /* img-comparison-slider のシャドウDOM内部では、second(before)側の親要素に高さ指定が
+     無いため height:100% が効かず、before だけ自身の元アスペクト比で表示されて
+     after(高さ100%が効く first 側)とサイズが噛み合わなくなる。img 自身に aspect-ratio を
+     指定して親の高さに依存せず両レイヤーを同じ比率に固定する。 */
+  aspect-ratio: 4 / 3;
+  height: auto;
+  object-fit: cover;
+  object-position: center;
   background: #0f172a;
-}
-
-.result-explorer__overlay-after {
-  clip-path: inset(0 calc(100% - var(--split)) 0 0);
-}
-
-.result-explorer__overlay-divider {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--split);
-  width: 2px;
-  transform: translateX(-1px);
-  background: #fff;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
-  pointer-events: none;
 }
 
 .result-explorer__overlay-label {
   position: absolute;
-  top: 10px;
-  padding: 5px 9px;
-  border-radius: 7px;
+  top: 14px;
+  min-width: 3.6rem;
+  padding: 7px 14px;
+  border-radius: 8px;
   color: #fff;
   background: rgba(13, 23, 39, 0.74);
-  font-size: 0.7rem;
+  font-size: 0.95rem;
   font-weight: 700;
+  /* img-comparison-slider の :host { line-height: 0 } を before(second)側の
+     スロットがそのまま継承してしまい、after側だけ line-height: normal にリセットされる
+     経路に乗るため高さが噛み合わなくなる。明示指定でこの継承を断ち切る。 */
+  line-height: 1.4;
+  text-align: center;
 }
 
+/* img-comparison-slider は slot="first"(After) を clip-path で左側のみ表示し、
+   slot="second"(Before) は全体を描画して After の下敷きになる構造。そのため
+   After ラベルは常に見える左端、Before ラベルは After に隠れない右端に置く
+   (right/left を通常の直感と逆にしないと、片方が常にクリップ/隠れて消える)。 */
 .result-explorer__overlay-label--before {
-  left: 10px;
+  right: 14px;
 }
 
 .result-explorer__overlay-label--after {
-  right: 10px;
-}
-
-.result-explorer__overlay-slider {
-  width: 100%;
+  left: 14px;
 }
 
 .result-explorer__detail-meta {

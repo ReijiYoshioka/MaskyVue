@@ -8,7 +8,18 @@ const API_TARGET = process.env.VITE_API_TARGET ?? 'http://localhost:6629'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue(), vuetify({ autoImport: true })],
+  plugins: [
+    vue({
+      // img-comparison-slider は Web Component(<img-comparison-slider>)なので
+      // Vueコンポーネントとして解決させず、カスタム要素としてそのまま出力させる。
+      template: {
+        compilerOptions: {
+          isCustomElement: (tag) => tag === 'img-comparison-slider',
+        },
+      },
+    }),
+    vuetify({ autoImport: true }),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
