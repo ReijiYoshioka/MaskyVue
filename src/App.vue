@@ -18,6 +18,9 @@ const selectedFiles = ref<File[]>([])
 const activeTab = ref<'upload' | 'result' | 'jobs' | 'settings'>('upload')
 
 const ACTIVE_TAB_STORAGE_KEY = 'masky-vue-active-tab'
+const PROCESSING_MODE_STORAGE_KEY = 'masky-vue-processing-mode'
+const DETECT_FACE_STORAGE_KEY = 'masky-vue-detect-face'
+const DETECT_TEXT_STORAGE_KEY = 'masky-vue-detect-text'
 
 onMounted(() => {
   ensureRegexPatternsLoaded()
@@ -26,6 +29,17 @@ onMounted(() => {
   if (savedTab === 'upload' || savedTab === 'jobs' || savedTab === 'result' || savedTab === 'settings') {
     activeTab.value = savedTab
   }
+
+  // リロードごとに毎回選び直す手間を避けるため、処理内容・チェック対象は
+  // ブラウザに保存して次回も同じ設定を引き継ぐ(要望: リセットボタンは不要)。
+  const savedProcessingMode = localStorage.getItem(PROCESSING_MODE_STORAGE_KEY)
+  if (savedProcessingMode === 'check' || savedProcessingMode === 'mask') {
+    processingMode.value = savedProcessingMode
+  }
+  const savedDetectFace = localStorage.getItem(DETECT_FACE_STORAGE_KEY)
+  if (savedDetectFace !== null) detectFace.value = savedDetectFace === 'true'
+  const savedDetectText = localStorage.getItem(DETECT_TEXT_STORAGE_KEY)
+  if (savedDetectText !== null) detectText.value = savedDetectText === 'true'
 
   // 共有URL(?job=...&token=...)を直接開いた場合、そのタスク詳細を即表示する
   const params = new URLSearchParams(location.search)
@@ -93,6 +107,16 @@ const shouldMask = computed(() => processingMode.value === 'mask')
 const detectFace = ref(true)
 const detectText = ref(true)
 const hasTargetSelected = computed(() => detectFace.value || detectText.value)
+
+watch(processingMode, (value) => {
+  localStorage.setItem(PROCESSING_MODE_STORAGE_KEY, value)
+})
+watch(detectFace, (value) => {
+  localStorage.setItem(DETECT_FACE_STORAGE_KEY, String(value))
+})
+watch(detectText, (value) => {
+  localStorage.setItem(DETECT_TEXT_STORAGE_KEY, String(value))
+})
 const targetSummaryLabel = computed(() => {
   const labels = [detectFace.value ? '目' : '', detectText.value ? '文字' : ''].filter(Boolean)
   return labels.length > 0 ? labels.join('・') : '未選択'

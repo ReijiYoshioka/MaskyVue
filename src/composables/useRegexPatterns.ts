@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { toReadableMessage, withStartupRetry } from '@/api/http'
 import {
   deleteRegexPattern,
@@ -24,7 +24,31 @@ const isLoading = ref(false)
 const loadError = ref('')
 let hasLoadedOnce = false
 
-const selectedNames = ref<string[]>([])
+// リロードごとに選び直す手間を避けるため、選択状態はブラウザに保存して次回も引き継ぐ。
+// 保存値が無い(初回訪問)場合だけ「全件選択」を初期値にする。空配列で保存されている場合は
+// 利用者が意図的に全解除した状態なので、そのまま空で復元する。
+const SELECTED_NAMES_STORAGE_KEY = 'masky-vue-selected-regex-names'
+
+function loadStoredSelectedNames(): string[] | null {
+  const raw = localStorage.getItem(SELECTED_NAMES_STORAGE_KEY)
+  if (raw === null) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.every((v) => typeof v === 'string') ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const selectedNames = ref<string[]>(loadStoredSelectedNames() ?? [])
+
+watch(
+  selectedNames,
+  (value) => {
+    localStorage.setItem(SELECTED_NAMES_STORAGE_KEY, JSON.stringify(value))
+  },
+  { deep: true },
+)
 
 export function useRegexPatterns() {
   async function refresh() {
@@ -35,8 +59,9 @@ export function useRegexPatterns() {
       // ここでリトライして吸収する(手動更新や選択操作等はこの関数を経由しない)。
       patterns.value = await withStartupRetry(fetchRegexPatterns)
       hasLoadedOnce = true
-      // まだ何も選んでいなければ全件を初期選択する(モックの「全パターンOR条件で照合」に合わせる)。
-      if (selectedNames.value.length === 0 && patterns.value.length > 0) {
+      // 保存された選択が無い(=このブラウザで一度も選んだことがない)ときだけ全件を
+      // 初期選択する(モックの「全パターンOR条件で照合」に合わせる)。
+      if (loadStoredSelectedNames() === null && selectedNames.value.length === 0 && patterns.value.length > 0) {
         selectedNames.value = patterns.value.map((p) => p.name)
       } else {
         pruneSelection()
