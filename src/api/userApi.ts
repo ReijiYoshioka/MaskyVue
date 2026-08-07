@@ -157,3 +157,4 @@ export async function deleteRegexPattern(name: string): Promise<RegexPattern[]> 
   })
   return parseRegexPatternsResponse(json)
 }
+

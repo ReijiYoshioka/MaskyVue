@@ -4,9 +4,9 @@
 //
 // 正規表現パターンは user-api の /regex-patterns (GET/PATCH/DELETE/POST reset) で
 // 全ユーザー共有・サービス再起動後も保持される(FaceMask/user-api/workspace/regex_storage.py)。
-// 一覧のチェックボックスは「タスク登録時に使うかどうか」の選択。選択状態は
-// useRegexPatterns で共有するため、「新しいタスク」画面はここで選んだ内容を
-// そのまま使う(タスク登録画面側での再選択は行わない)。
+// 「有効/無効」(タスク登録時に使うかどうか)はこのブラウザのローカル状態(useRegexPatterns が
+// localStorage に保存)。「新しいタスク」画面は有効なパターンをそのまま使う
+// (タスク登録画面側での再選択は行わない)。
 import { computed, onMounted, ref } from 'vue'
 import { toReadableMessage } from '@/api/http'
 import { useLicenseStatusAdapter } from '@/composables/useLicenseStatusAdapter'
@@ -22,10 +22,13 @@ const {
   refresh: refreshRegexPatterns,
   addOrUpdate: addOrUpdateRegexPattern,
   remove: removeRegexPattern,
-  selectedNames: selectedRegexPatternNames,
+  setEnabled: setRegexPatternEnabled,
+  isEnabled: isRegexPatternEnabled,
 } = useRegexPatterns()
 
 onMounted(() => void refreshRegexPatterns())
+
+const enabledPatternCount = computed(() => regexPatterns.value.filter((p) => isRegexPatternEnabled(p.name)).length)
 
 // サーバー(regex_storage.py)は元から日本語のメッセージを返すので、そのまま表示すればよい。
 // サーバー由来でない例外(ブラウザ/ライブラリの英語メッセージ)は日本語の固定文言に差し替える。
@@ -256,7 +259,7 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
       <div class="card-header">
         <div class="card-title">
           <h3>文字検知の正規表現パターン</h3>
-          <p>登録した{{ regexPatterns.length }}件をOR条件でOCR結果と照合します(タスク登録時に使う分を選択)</p>
+          <p>有効な{{ enabledPatternCount }}件をOR条件でOCR結果と照合します</p>
         </div>
         <v-btn color="primary" variant="flat" @click="isAddPatternDialogOpen = true">
           <v-icon icon="mdi-plus" start size="18" />
@@ -278,7 +281,7 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
               <tr>
                 <th>名称</th>
                 <th>正規表現</th>
-                <th class="checkbox-col"></th>
+                <th class="status-col">状態</th>
                 <th class="actions-col"></th>
               </tr>
             </thead>
@@ -291,17 +294,11 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
                   </template>
                   <code v-else class="pattern-code">{{ pattern.value }}</code>
                 </td>
-                <td class="checkbox-col">
-                  <v-checkbox
-                    :model-value="selectedRegexPatternNames.includes(pattern.name)"
-                    density="compact"
-                    hide-details
-                    @update:model-value="(checked) => {
-                      const idx = selectedRegexPatternNames.indexOf(pattern.name)
-                      if (checked && idx === -1) selectedRegexPatternNames.push(pattern.name)
-                      else if (!checked && idx !== -1) selectedRegexPatternNames.splice(idx, 1)
-                    }"
-                  />
+                <td class="status-col">
+                  <v-chip size="small" :color="isRegexPatternEnabled(pattern.name) ? 'success' : undefined" variant="tonal">
+                    <v-icon v-if="isRegexPatternEnabled(pattern.name)" icon="mdi-check" start size="14" />
+                    {{ isRegexPatternEnabled(pattern.name) ? '有効' : '無効' }}
+                  </v-chip>
                 </td>
                 <td class="actions-col">
                   <template v-if="editingPatternName === pattern.name">
@@ -309,6 +306,14 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
                     <v-btn size="small" variant="outlined" :disabled="isSavingEdit" @click="cancelEditingPattern">取消</v-btn>
                   </template>
                   <template v-else>
+                    <v-btn
+                      size="small"
+                      variant="outlined"
+                      :color="isRegexPatternEnabled(pattern.name) ? undefined : 'primary'"
+                      @click="setRegexPatternEnabled(pattern.name, !isRegexPatternEnabled(pattern.name))"
+                    >
+                      {{ isRegexPatternEnabled(pattern.name) ? '無効化' : '有効化' }}
+                    </v-btn>
                     <v-btn icon="mdi-pencil-outline" size="small" variant="text" density="comfortable" @click="startEditingPattern(pattern.name, pattern.value)" />
                     <v-btn
                       icon="mdi-trash-can-outline"
@@ -616,14 +621,10 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
   text-align: right;
 }
 
-.pattern-table .checkbox-col {
+.pattern-table .status-col {
   width: 1px;
-  padding-right: 40px;
+  padding-right: 24px;
   white-space: nowrap;
-}
-
-.pattern-table .checkbox-col :deep(.v-selection-control) {
-  min-height: 0;
 }
 
 .pattern-code {

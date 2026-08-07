@@ -10,22 +10,21 @@ import type { RegexPattern } from '@/types/regexPattern'
  * useLicenseStatusAdapter と同じ理由: 片方で追加・削除した内容が
  * もう片方にすぐ反映されるようにするため)。
  *
- * 「タスク登録時に使う分」の選択状態(selectedNames)も同じ理由でここに置く。
- * 共通設定画面のチェックボックスと、新しいタスク画面のダイアログのチェックボックスは
- * 同じ選択状態を指しているため、どちらで変更してももう片方に反映される。
+ * 「有効/無効」(=タスク登録時に使う分)は現時点ではブラウザ側(localStorage)のみで持つ
+ * (バックエンドはまだ enabled フラグを保存できないため)。リロードごとに選び直す手間を避ける
+ * ため、選択状態はブラウザに保存して次回も引き継ぐ。
  */
 const patterns = ref<RegexPattern[]>([])
 const isLoading = ref(false)
 const loadError = ref('')
 let hasLoadedOnce = false
 
-// リロードごとに選び直す手間を避けるため、選択状態はブラウザに保存して次回も引き継ぐ。
-// 保存値が無い(初回訪問)場合だけ「全件選択」を初期値にする。空配列で保存されている場合は
-// 利用者が意図的に全解除した状態なので、そのまま空で復元する。
-const SELECTED_NAMES_STORAGE_KEY = 'masky-vue-selected-regex-names'
+// 保存値が無い(初回訪問)場合だけ「全件有効」を初期値にする。空配列で保存されている場合は
+// 利用者が意図的に全て無効化した状態なので、そのまま空で復元する。
+const ENABLED_NAMES_STORAGE_KEY = 'masky-vue-enabled-regex-names'
 
-function loadStoredSelectedNames(): string[] | null {
-  const raw = localStorage.getItem(SELECTED_NAMES_STORAGE_KEY)
+function loadStoredEnabledNames(): string[] | null {
+  const raw = localStorage.getItem(ENABLED_NAMES_STORAGE_KEY)
   if (raw === null) return null
   try {
     const parsed = JSON.parse(raw)
@@ -35,12 +34,12 @@ function loadStoredSelectedNames(): string[] | null {
   }
 }
 
-const selectedNames = ref<string[]>(loadStoredSelectedNames() ?? [])
+const enabledNames = ref<string[]>(loadStoredEnabledNames() ?? [])
 
 watch(
-  selectedNames,
+  enabledNames,
   (value) => {
-    localStorage.setItem(SELECTED_NAMES_STORAGE_KEY, JSON.stringify(value))
+    localStorage.setItem(ENABLED_NAMES_STORAGE_KEY, JSON.stringify(value))
   },
   { deep: true },
 )
@@ -51,15 +50,15 @@ export function useRegexPatterns() {
     loadError.value = ''
     try {
       // 初回ロードはコンテナ起動直後にバックエンドの準備が遅れているケースがあるため、
-      // ここでリトライして吸収する(手動更新や選択操作等はこの関数を経由しない)。
+      // ここでリトライして吸収する(手動更新や有効/無効の切り替え等はこの関数を経由しない)。
       patterns.value = await withStartupRetry(fetchRegexPatterns)
       hasLoadedOnce = true
-      // 保存された選択が無い(=このブラウザで一度も選んだことがない)ときだけ全件を
-      // 初期選択する(モックの「全パターンOR条件で照合」に合わせる)。
-      if (loadStoredSelectedNames() === null && selectedNames.value.length === 0 && patterns.value.length > 0) {
-        selectedNames.value = patterns.value.map((p) => p.name)
+      // 保存された有効状態が無い(=このブラウザで一度も操作したことがない)ときだけ
+      // 全件を初期値として有効にする(モックの「全パターンOR条件で照合」に合わせる)。
+      if (loadStoredEnabledNames() === null && enabledNames.value.length === 0 && patterns.value.length > 0) {
+        enabledNames.value = patterns.value.map((p) => p.name)
       } else {
-        pruneSelection()
+        pruneEnabledNames()
       }
     } catch (err) {
       loadError.value = toReadableMessage(err, '正規表現パターンの取得に失敗しました。時間を置いて再度お試しください。')
@@ -71,41 +70,41 @@ export function useRegexPatterns() {
   async function addOrUpdate(name: string, value: string, previousName?: string) {
     patterns.value = await patchRegexPattern(name, value)
     // 名前を変更しての編集は削除+追加ではなく上書きなので、旧名が別名になった場合は
-    // 選択状態を追従させる(そうしないと選択していたはずのパターンが外れて見える)。
+    // 有効状態を追従させる(そうしないと有効だったはずのパターンが無効に見える)。
     if (previousName && previousName !== name) {
-      const index = selectedNames.value.indexOf(previousName)
-      if (index !== -1) selectedNames.value.splice(index, 1, name)
-    } else if (!previousName && !selectedNames.value.includes(name)) {
-      selectedNames.value.push(name)
+      const index = enabledNames.value.indexOf(previousName)
+      if (index !== -1) enabledNames.value.splice(index, 1, name)
+    } else if (!previousName && !enabledNames.value.includes(name)) {
+      enabledNames.value.push(name)
     }
   }
 
   async function remove(name: string) {
     patterns.value = await deleteRegexPattern(name)
-    const index = selectedNames.value.indexOf(name)
-    if (index !== -1) selectedNames.value.splice(index, 1)
+    const index = enabledNames.value.indexOf(name)
+    if (index !== -1) enabledNames.value.splice(index, 1)
   }
 
-  /** サーバーからもう存在しなくなった名前を選択状態から掃除する。 */
-  function pruneSelection() {
-    const existingNames = new Set(patterns.value.map((p) => p.name))
-    selectedNames.value = selectedNames.value.filter((name) => existingNames.has(name))
-  }
-
-  function isSelected(name: string): boolean {
-    return selectedNames.value.includes(name)
-  }
-
-  function setSelected(name: string, selected: boolean) {
-    const index = selectedNames.value.indexOf(name)
-    if (selected && index === -1) {
-      selectedNames.value.push(name)
-    } else if (!selected && index !== -1) {
-      selectedNames.value.splice(index, 1)
+  function setEnabled(name: string, enabled: boolean) {
+    const index = enabledNames.value.indexOf(name)
+    if (enabled && index === -1) {
+      enabledNames.value.push(name)
+    } else if (!enabled && index !== -1) {
+      enabledNames.value.splice(index, 1)
     }
   }
 
-  const selectedPatterns = computed(() => patterns.value.filter((p) => selectedNames.value.includes(p.name)))
+  function isEnabled(name: string): boolean {
+    return enabledNames.value.includes(name)
+  }
+
+  /** サーバーからもう存在しなくなった名前を有効状態から掃除する。 */
+  function pruneEnabledNames() {
+    const existingNames = new Set(patterns.value.map((p) => p.name))
+    enabledNames.value = enabledNames.value.filter((name) => existingNames.has(name))
+  }
+
+  const enabledPatterns = computed(() => patterns.value.filter((p) => enabledNames.value.includes(p.name)))
 
   /** まだ一度も取得していなければ取得する。複数コンポーネントから呼ばれても初回分だけ通信する。 */
   function ensureLoaded() {
@@ -120,10 +119,9 @@ export function useRegexPatterns() {
     refresh,
     addOrUpdate,
     remove,
+    setEnabled,
+    isEnabled,
     ensureLoaded,
-    selectedNames,
-    selectedPatterns,
-    isSelected,
-    setSelected,
+    enabledPatterns,
   }
 }

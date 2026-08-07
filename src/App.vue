@@ -123,10 +123,9 @@ const targetSummaryLabel = computed(() => {
 })
 const processingModeLabel = computed(() => (shouldMask.value ? 'チェック＋マスク' : 'チェックのみ'))
 
-// 文字検知用の正規表現は、共通設定画面(SettingsPage.vue)で登録・選択したものを
-// そのまま使う(useRegexPatterns はシングルトンなので選択状態を共有している)。
-// このタスク登録画面側での再選択は行わない。
-const { selectedPatterns: selectedRegexPatterns, ensureLoaded: ensureRegexPatternsLoaded } = useRegexPatterns()
+// 文字検知用の正規表現は、共通設定画面(SettingsPage.vue)で有効化したものをそのまま使う
+// (有効状態はこのブラウザのローカルに保存される)。このタスク登録画面側での再選択は行わない。
+const { enabledPatterns: selectedRegexPatterns, ensureLoaded: ensureRegexPatternsLoaded } = useRegexPatterns()
 
 const isBusy = computed(() => phase.value === 'uploading' || phase.value === 'polling')
 const isLicenseInactive = computed(() => licenseIndicator.value.tone === 'inactive')
