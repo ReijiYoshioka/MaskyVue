@@ -544,7 +544,7 @@ watch(phase, (value) => {
         </div>
 
         <!-- 共通設定タブ -->
-        <div v-show="activeTab === 'settings'" class="content narrow">
+        <div v-show="activeTab === 'settings'" class="content wide">
           <SettingsPage />
         </div>
       </main>
