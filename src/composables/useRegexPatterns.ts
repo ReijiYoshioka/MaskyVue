@@ -1,11 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { toReadableMessage, withStartupRetry } from '@/api/http'
-import {
-  deleteRegexPattern,
-  fetchRegexPatterns,
-  patchRegexPattern,
-  resetRegexPatterns,
-} from '@/api/userApi'
+import { deleteRegexPattern, fetchRegexPatterns, patchRegexPattern } from '@/api/userApi'
 import type { RegexPattern } from '@/types/regexPattern'
 
 /**
@@ -91,11 +86,6 @@ export function useRegexPatterns() {
     if (index !== -1) selectedNames.value.splice(index, 1)
   }
 
-  async function resetToDefaults() {
-    patterns.value = await resetRegexPatterns()
-    selectedNames.value = patterns.value.map((p) => p.name)
-  }
-
   /** サーバーからもう存在しなくなった名前を選択状態から掃除する。 */
   function pruneSelection() {
     const existingNames = new Set(patterns.value.map((p) => p.name))
@@ -130,7 +120,6 @@ export function useRegexPatterns() {
     refresh,
     addOrUpdate,
     remove,
-    resetToDefaults,
     ensureLoaded,
     selectedNames,
     selectedPatterns,

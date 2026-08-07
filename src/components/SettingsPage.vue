@@ -22,7 +22,6 @@ const {
   refresh: refreshRegexPatterns,
   addOrUpdate: addOrUpdateRegexPattern,
   remove: removeRegexPattern,
-  resetToDefaults: resetRegexPatternsToDefaults,
   selectedNames: selectedRegexPatternNames,
 } = useRegexPatterns()
 
@@ -99,21 +98,6 @@ async function deletePattern(name: string) {
     toast.error('正規表現パターンの削除に失敗しました', getReadableRegexErrorMessage(err))
   } finally {
     deletingPatternName.value = null
-  }
-}
-
-const isResettingPatterns = ref(false)
-
-async function resetPatterns() {
-  if (!window.confirm('正規表現パターンを初期値(メールアドレス・日本国内電話番号・マイナンバー)に戻しますか？現在の登録内容は失われます。')) return
-  isResettingPatterns.value = true
-  try {
-    await resetRegexPatternsToDefaults()
-    toast.success('正規表現パターンを初期値に戻しました')
-  } catch (err) {
-    toast.error('初期値への復元に失敗しました', getReadableRegexErrorMessage(err))
-  } finally {
-    isResettingPatterns.value = false
   }
 }
 
@@ -341,13 +325,7 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
           </table>
         </div>
 
-        <div class="row between mt-16">
-          <p class="mk-muted note-text">登録時に構文チェックとテスト文字列へのマッチ確認を行います。</p>
-          <v-btn color="secondary" variant="outlined" :loading="isResettingPatterns" @click="resetPatterns">
-            <v-icon icon="mdi-restore" start size="16" />
-            初期値に戻す
-          </v-btn>
-        </div>
+        <p class="mk-muted note-text mt-16">登録時に構文チェックとテスト文字列へのマッチ確認を行います。</p>
       </div>
     </section>
 

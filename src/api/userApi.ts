@@ -157,12 +157,3 @@ export async function deleteRegexPattern(name: string): Promise<RegexPattern[]> 
   })
   return parseRegexPatternsResponse(json)
 }
-
-/** 一覧を初期値(メールアドレス・日本国内電話番号・マイナンバー)へ無条件で戻す。 */
-export async function resetRegexPatterns(): Promise<RegexPattern[]> {
-  const json = await requestJson('/regex-patterns/reset', {
-    method: 'POST',
-    action: '正規表現一覧の初期化',
-  })
-  return parseRegexPatternsResponse(json)
-}
