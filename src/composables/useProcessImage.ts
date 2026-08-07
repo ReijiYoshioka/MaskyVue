@@ -11,7 +11,7 @@ import {
 
 const POLL_INTERVAL_MS = 1500
 
-export type FlowPhase = 'idle' | 'uploading' | 'polling' | 'completed' | 'failed' | 'error'
+export type FlowPhase = 'idle' | 'uploading' | 'polling' | 'paused' | 'completed' | 'failed' | 'error'
 
 /** タスクは1回のアップロード(複数ファイル可)につき1件。結果の詳細確認は
  *  ResultExplorer(タスク→アップロードファイル→画像のドリルダウン)が担う。 */
@@ -53,6 +53,15 @@ export function useProcessImage() {
         if (status.status !== 'completed') {
           errorMessage.value = status.error?.message ?? `ジョブが ${status.status} で終了しました。`
         }
+        return
+      }
+
+      // 一時停止済みのジョブはこのままではポーリングが終わらず、送信フォームが
+      // ずっと「送信中」表示のままになってしまう。ポーリングを止めてフォームを解放する
+      // (作業キュー画面から再開・キャンセルできるので、この画面での追跡は不要)。
+      if (status.status === 'paused') {
+        clearPollTimer()
+        phase.value = 'paused'
         return
       }
 

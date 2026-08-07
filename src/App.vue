@@ -198,7 +198,10 @@ watch(phase, (value) => {
   if (value === 'polling') {
     toast.success('タスクを登録しました', 'キューに追加され、順次処理されます')
   }
-  if (value === 'polling' || value === 'completed' || value === 'failed') {
+  if (value === 'paused') {
+    toast.success('タスクを一時停止しました', '作業キューから再開・キャンセルできます')
+  }
+  if (value === 'polling' || value === 'paused' || value === 'completed' || value === 'failed') {
     void jobListPanel.value?.refresh()
   }
   if (value === 'completed' || value === 'failed') {
