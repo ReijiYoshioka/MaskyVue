@@ -324,8 +324,6 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
             </tbody>
           </table>
         </div>
-
-        <p class="mk-muted note-text mt-16">登録時に構文チェックとテスト文字列へのマッチ確認を行います。</p>
       </div>
     </section>
 
@@ -638,15 +636,6 @@ const serialDisplay = computed(() => maskedSerial.value ?? '未登録')
 
 .row.between {
   justify-content: space-between;
-}
-
-.note-text {
-  margin: 0;
-  font-size: 12.5px;
-}
-
-.mt-16 {
-  margin-top: 16px;
 }
 
 .dialog-title {
